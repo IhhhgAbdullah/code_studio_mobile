@@ -7,7 +7,7 @@ const String _pyHtml = '''
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <style>
   body { font-family: sans-serif; margin: 0; padding: 12px; background: #0D2B52; color: #fff; }
   textarea { width: 100%; height: 160px; box-sizing: border-box; font-family: monospace;
@@ -19,23 +19,34 @@ const String _pyHtml = '''
 </style>
 </head>
 <body>
-<textarea id="code">print("مرحباً من Python")
-print(2 + 3)</textarea>
+<textarea id="code">name = "Abdullah"
+for i in range(3):
+    print("مرحباً", name, i + 1)</textarea>
 <button id="run" disabled>جاري تحميل Python...</button>
 <pre id="out">المخرجات ستظهر هنا</pre>
 <script>
+  function log(s) {
+    document.getElementById('out').textContent += s + '\\n';
+  }
+  function showErr(e) {
+    const msg = (e && e.message) ? e.message : (e && e.toString) ? e.toString() : JSON.stringify(e);
+    document.getElementById('out').textContent = 'خطأ: ' + msg;
+  }
   let pyodide = null;
   async function init() {
-    pyodide = await loadPyodide();
+    if (typeof loadPyodide !== 'function') {
+      throw new Error('ملف Pyodide لم يُحمَّل. تأكد من اتصال الإنترنت.');
+    }
+    pyodide = await loadPyodide({
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'
+    });
     pyodide.setStdout({ batched: (s) => log(s) });
     pyodide.setStderr({ batched: (s) => log(s) });
     const btn = document.getElementById('run');
     btn.disabled = false;
     btn.textContent = 'تشغيل';
     btn.onclick = runCode;
-  }
-  function log(s) {
-    document.getElementById('out').textContent += s + '\\n';
+    document.getElementById('out').textContent = 'Python جاهز';
   }
   async function runCode() {
     document.getElementById('out').textContent = '';
@@ -45,9 +56,7 @@ print(2 + 3)</textarea>
       log(String(e));
     }
   }
-  init().catch(e => {
-    document.getElementById('out').textContent = 'فشل تحميل Python: ' + e;
-  });
+  init().catch(showErr);
 </script>
 </body>
 </html>
