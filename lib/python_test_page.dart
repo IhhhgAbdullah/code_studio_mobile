@@ -33,6 +33,7 @@ const String _pyHtml = '''
     border-radius: 10px; background: #D4AF37; color: #0D2B52; font-weight: bold;
   }
   button.alt { background: #2A4A7A; color: #fff; }
+  button.danger { background: #8B2A2A; color: #fff; }
   button:disabled { opacity: 0.6; }
   pre {
     background: #0A1F3D; color: #7CFC7C; padding: 10px; border-radius: 10px;
@@ -53,6 +54,10 @@ for i in range(3):
   <div class="row" style="margin-top:8px">
     <button id="save" class="alt">حفظ</button>
     <button id="open" class="alt">فتح</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="new" class="alt">جديد</button>
+    <button id="del" class="danger">حذف</button>
   </div>
   <div class="row" style="margin-top:8px">
     <select id="files"></select>
@@ -116,6 +121,23 @@ for i in range(3):
     msg('تم فتح: ' + name);
   }
 
+  function newFile() {
+    document.getElementById('code').value = '';
+    document.getElementById('fname').value = 'new.py';
+    document.getElementById('out').textContent = 'ملف جديد. اكتب الكود ثم احفظه.';
+    msg('ملف جديد');
+  }
+
+  function deleteFile() {
+    const name = document.getElementById('files').value;
+    const files = getFiles();
+    if (!name || !(name in files)) { msg('لا يوجد ملف محدد للحذف'); return; }
+    delete files[name];
+    localStorage.setItem(KEY, JSON.stringify(files));
+    refreshList();
+    msg('تم حذف: ' + name);
+  }
+
   function openByName(n) {
     refreshList(n);
     openFile();
@@ -171,6 +193,8 @@ for i in range(3):
 
   document.getElementById('save').onclick = saveFile;
   document.getElementById('open').onclick = openFile;
+  document.getElementById('new').onclick = newFile;
+  document.getElementById('del').onclick = deleteFile;
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
 </script>
