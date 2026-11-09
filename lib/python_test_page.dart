@@ -16,6 +16,7 @@ const String _pyHtml = '''
            border-radius: 8px; background: #D4AF37; color: #0D2B52; font-weight: bold; }
   pre { background: #111; color: #0f0; padding: 10px; border-radius: 8px; min-height: 80px;
         direction: ltr; white-space: pre-wrap; text-align: left; }
+  .err { color: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -28,9 +29,16 @@ for i in range(3):
   function log(s) {
     document.getElementById('out').textContent += s + '\\n';
   }
-  function showErr(e) {
-    const msg = (e && e.message) ? e.message : (e && e.toString) ? e.toString() : JSON.stringify(e);
-    document.getElementById('out').textContent = 'خطأ: ' + msg;
+  function showErr(title, detail) {
+    const out = document.getElementById('out');
+    out.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'err';
+    t.textContent = title;
+    const d = document.createElement('div');
+    d.textContent = detail;
+    out.appendChild(t);
+    out.appendChild(d);
   }
   let pyodide = null;
   async function init() {
@@ -53,10 +61,16 @@ for i in range(3):
     try {
       await pyodide.runPythonAsync(document.getElementById('code').value);
     } catch (e) {
-      log(String(e));
+      // Python errors: type, line number and message
+      const text = String(e);
+      const lines = text.trim().split('\n');
+      const last = lines[lines.length - 1];
+      const lineMatch = text.match(/line (\d+)/);
+      const title = 'خطأ في Python' + (lineMatch ? ' - السطر ' + lineMatch[1] : '');
+      showErr(title, last);
     }
   }
-  init().catch(showErr);
+  init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
 </script>
 </body>
 </html>
