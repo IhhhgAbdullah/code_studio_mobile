@@ -23,6 +23,31 @@ jobs:
       - name: Generate Android platform files
         run: flutter create . --platforms=android --project-name code_studio_mobile
 
+      - name: Generate app icon
+        run: |
+          mkdir -p assets
+          cat > assets/icon.svg << 'EOF'
+          <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#0D2B52"/>
+                <stop offset="1" stop-color="#061429"/>
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+            <rect x="36" y="36" width="440" height="440" rx="88" fill="none" stroke="#D4AF37" stroke-width="10"/>
+            <polyline points="176,160 80,256 176,352" fill="none" stroke="#D4AF37" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="336,160 432,256 336,352" fill="none" stroke="#D4AF37" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="296" y1="140" x2="216" y2="372" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
+          </svg>
+          EOF
+          convert -background none assets/icon.svg -resize 512x512 assets/icon.png
+          convert assets/icon.png -resize 48x48 android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert assets/icon.png -resize 72x72 android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert assets/icon.png -resize 96x96 android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert assets/icon.png -resize 144x144 android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert assets/icon.png -resize 192x192 android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
       - name: Allow internet permission
         run: |
           sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
