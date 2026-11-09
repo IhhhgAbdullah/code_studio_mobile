@@ -23,6 +23,16 @@ jobs:
       - name: Generate Android platform files
         run: flutter create . --platforms=android --project-name code_studio_mobile
 
+      - name: Show Gradle files
+        run: |
+          ls android/app
+          echo "----- root build -----"
+          cat android/build.gradle* || true
+          echo "----- app build -----"
+          cat android/app/build.gradle* || true
+          echo "----- settings -----"
+          cat android/settings.gradle* || true
+
       - run: flutter pub get
 
       - run: flutter build apk --release
