@@ -9,22 +9,46 @@ const String _pyHtml = '''
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <style>
+  * { box-sizing: border-box; }
   body { font-family: sans-serif; margin: 0; padding: 12px; background: #0D2B52; color: #fff; }
-  textarea { width: 100%; height: 160px; box-sizing: border-box; font-family: monospace;
-             font-size: 15px; direction: ltr; border: 2px solid #D4AF37; border-radius: 8px; padding: 8px; }
-  button { width: 100%; margin-top: 8px; padding: 12px; font-size: 16px; border: none;
-           border-radius: 8px; background: #D4AF37; color: #0D2B52; font-weight: bold; }
-  pre { background: #111; color: #0f0; padding: 10px; border-radius: 8px; min-height: 80px;
-        direction: ltr; white-space: pre-wrap; text-align: left; }
-  .err { color: #ff6b6b; }
+  .card {
+    background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px;
+    padding: 12px; margin-bottom: 12px;
+  }
+  .card-title { color: #D4AF37; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
+  textarea {
+    width: 100%; height: 170px; font-family: monospace; font-size: 15px;
+    direction: ltr; background: #0A1F3D; color: #fff; border: none;
+    border-radius: 10px; padding: 10px; resize: vertical;
+  }
+  button {
+    width: 100%; padding: 13px; font-size: 16px; border: none;
+    border-radius: 10px; background: #D4AF37; color: #0D2B52; font-weight: bold;
+  }
+  button:disabled { opacity: 0.6; }
+  pre {
+    background: #0A1F3D; color: #7CFC7C; padding: 10px; border-radius: 10px;
+    min-height: 90px; margin: 0; direction: ltr; white-space: pre-wrap; text-align: left;
+    font-family: monospace; font-size: 14px;
+  }
+  .err { color: #ff6b6b; font-weight: bold; }
 </style>
 </head>
 <body>
-<textarea id="code">name = "Abdullah"
+<div class="card">
+  <div class="card-title">الكود</div>
+  <textarea id="code">name = "Abdullah"
 for i in range(3):
     print("مرحباً", name, i + 1)</textarea>
-<button id="run" disabled>جاري تحميل Python...</button>
-<pre id="out">المخرجات ستظهر هنا</pre>
+</div>
+<div class="card">
+  <div class="card-title">التشغيل</div>
+  <button id="run" disabled>جاري تحميل Python...</button>
+</div>
+<div class="card">
+  <div class="card-title">المخرجات</div>
+  <pre id="out">المخرجات ستظهر هنا</pre>
+</div>
 <script>
   function log(s) {
     document.getElementById('out').textContent += s + '\\n';
@@ -61,7 +85,6 @@ for i in range(3):
     try {
       await pyodide.runPythonAsync(document.getElementById('code').value);
     } catch (e) {
-      // Python errors: type, line number and message
       const text = String(e);
       const lines = text.trim().split('\n');
       const last = lines[lines.length - 1];
