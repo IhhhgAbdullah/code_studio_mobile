@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'editor_page.dart';
 
 final ValueNotifier<Locale> localeNotifier = ValueNotifier(const Locale('ar'));
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -59,7 +60,7 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final pages = [
       const _PlaceholderPage(text: 'مشاريعك ستظهر هنا'),
-      const _PlaceholderPage(text: 'محرر الأكواد قريباً'),
+      const EditorPage(),
       const _SettingsPage(),
     ];
 
