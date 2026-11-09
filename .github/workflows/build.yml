@@ -23,6 +23,13 @@ jobs:
       - name: Generate Android platform files
         run: flutter create . --platforms=android --project-name code_studio_mobile
 
+      - name: Pin Gradle and AGP for Chaquopy compatibility
+        run: |
+          sed -i 's/gradle-[0-9.]*-\(bin\|all\)\.zip/gradle-8.13-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/com.android.application") version "[0-9.]*"/com.android.application") version "8.9.1"/' android/settings.gradle.kts
+          grep -n "distributionUrl" android/gradle/wrapper/gradle-wrapper.properties
+          grep -n "com.android.application" android/settings.gradle.kts
+
       - name: Add Chaquopy (Python) to Android build
         run: |
           sed -i '/id("org.jetbrains.kotlin.android")/a\    id("com.chaquo.python") version "16.1.0" apply false' android/settings.gradle.kts
