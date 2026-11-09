@@ -80,6 +80,8 @@ const String _pyHtml = r'''
   const KEY = 'cs_files';
   const KEYWORDS = ['False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield','match','case'];
   const BUILTINS = ['print','len','range','int','str','float','list','dict','set','tuple','sum','min','max','abs','sorted','enumerate','zip','map','filter','open','type','isinstance','input'];
+  const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
+  const CLOSERS = [')', ']', '}', '"', "'"];
 
   function esc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -204,17 +206,51 @@ const String _pyHtml = r'''
       count += node.length;
     }
   }
-  document.getElementById('code').addEventListener('input', () => {
+
+  const codeEl = document.getElementById('code');
+
+  codeEl.addEventListener('keydown', (e) => {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed) return;
+    const el = codeEl;
+    const pos = getCaret(el);
+    const src = el.innerText.replace(/\u00a0/g, ' ');
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const lineStart = src.lastIndexOf('\n', pos - 1) + 1;
+      const line = src.slice(lineStart, pos);
+      const indent = line.match(/^\s*/)[0];
+      const extra = line.trimEnd().endsWith(':') ? '    ' : '';
+      document.execCommand('insertText', false, '\n' + indent + extra);
+      return;
+    }
+
+    if (CLOSERS.includes(e.key) && src[pos] === e.key) {
+      e.preventDefault();
+      sel.modify('move', 'forward', 'character');
+      return;
+    }
+
+    if (e.key in PAIRS) {
+      e.preventDefault();
+      document.execCommand('insertText', false, e.key + PAIRS[e.key]);
+      sel.modify('move', 'backward', 'character');
+    }
+  });
+
+  codeEl.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const el = document.getElementById('code');
+      const el = codeEl;
       const pos = getCaret(el);
       const src = el.innerText.replace(/\u00a0/g, ' ');
       el.innerHTML = highlight(src);
       setCaret(el, pos);
     }, 250);
   });
-  document.getElementById('code').addEventListener('paste', (e) => {
+
+  codeEl.addEventListener('paste', (e) => {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text');
     document.execCommand('insertText', false, text);
