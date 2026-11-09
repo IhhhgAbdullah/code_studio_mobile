@@ -53,7 +53,7 @@ const String _pyHtml = r'''
 <body>
 <div class="card">
   <div class="card-title">الكود</div>
-  <input id="fname" value="main.py" placeholder="اسم الملف">
+  <input id="fname" value="main.py" placeholder="اسم الملف أو المسار (مثال: projects/app.py)">
   <div id="code" contenteditable="true" spellcheck="false"></div>
   <div class="row" style="margin-top:8px">
     <button id="save" class="alt">حفظ</button>
@@ -65,6 +65,13 @@ const String _pyHtml = r'''
   </div>
   <div class="row" style="margin-top:8px">
     <select id="files"></select>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <button id="ren" class="alt">إعادة تسمية</button>
+  </div>
+  <input id="fold" placeholder="اسم المجلد الجديد (مثال: projects)" style="margin-top:8px">
+  <div class="row" style="margin-top:8px">
+    <button id="mkdir" class="alt">مجلد جديد</button>
   </div>
   <div id="msg" class="msg"></div>
 </div>
@@ -78,6 +85,7 @@ const String _pyHtml = r'''
 </div>
 <script>
   const KEY = 'cs_files';
+  const FKEY = 'cs_folders';
   const KEYWORDS = ['False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield','match','case'];
   const BUILTINS = ['print','len','range','int','str','float','list','dict','set','tuple','sum','min','max','abs','sorted','enumerate','zip','map','filter','open','type','isinstance','input'];
   const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
@@ -118,16 +126,62 @@ const String _pyHtml = r'''
     catch (e) { return {}; }
   }
 
+  function getFolders() {
+    try { return JSON.parse(localStorage.getItem(FKEY) || '[]'); }
+    catch (e) { return []; }
+  }
+
+  function cleanPath(raw) {
+    return (raw || '').trim().replace(/\\/g, '/').replace(/\/+/g, '/')
+      .split('/').filter(p => p && p !== '.' && p !== '..').join('/');
+  }
+
+  function cleanName(raw) {
+    let n = cleanPath(raw);
+    if (!n) n = 'main.py';
+    if (!n.endsWith('.py')) n += '.py';
+    return n;
+  }
+
+  function opt(n, label) {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = label || n;
+    return o;
+  }
+
   function refreshList(selected) {
     const sel = document.getElementById('files');
     const files = getFiles();
-    sel.innerHTML = '';
-    Object.keys(files).sort().forEach(n => {
-      const o = document.createElement('option');
-      o.value = n;
-      o.textContent = n;
-      sel.appendChild(o);
+    const names = Object.keys(files);
+    const folders = new Set(getFolders());
+    names.forEach(n => {
+      if (n.includes('/')) folders.add(n.slice(0, n.lastIndexOf('/')));
     });
+    sel.innerHTML = '';
+
+    const rootNames = names.filter(n => !n.includes('/')).sort();
+    if (rootNames.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'الجذر';
+      rootNames.forEach(n => g.appendChild(opt(n)));
+      sel.appendChild(g);
+    }
+
+    [...folders].sort().forEach(f => {
+      const g = document.createElement('optgroup');
+      g.label = f + '/';
+      const inside = names.filter(n => n.startsWith(f + '/')).sort();
+      if (inside.length) {
+        inside.forEach(n => g.appendChild(opt(n, n.slice(f.length + 1))));
+      } else {
+        const e = opt('', '(مجلد فارغ)');
+        e.disabled = true;
+        g.appendChild(e);
+      }
+      sel.appendChild(g);
+    });
+
     if (selected) sel.value = selected;
   }
 
@@ -136,8 +190,7 @@ const String _pyHtml = r'''
   }
 
   function saveFile() {
-    let name = document.getElementById('fname').value.trim() || 'main.py';
-    if (!name.endsWith('.py')) name += '.py';
+    const name = cleanName(document.getElementById('fname').value);
     const files = getFiles();
     files[name] = getCode();
     try {
@@ -174,6 +227,32 @@ const String _pyHtml = r'''
     localStorage.setItem(KEY, JSON.stringify(files));
     refreshList();
     msg('تم حذف: ' + name);
+  }
+
+  function renameFile() {
+    const oldName = document.getElementById('files').value;
+    const files = getFiles();
+    if (!oldName || !(oldName in files)) { msg('اختر ملفاً من القائمة أولاً'); return; }
+    const newName = cleanName(document.getElementById('fname').value);
+    if (newName === oldName) { msg('الاسم الجديد مطابق للقديم'); return; }
+    if (newName in files) { msg('يوجد ملف بهذا الاسم: ' + newName); return; }
+    files[newName] = files[oldName];
+    delete files[oldName];
+    localStorage.setItem(KEY, JSON.stringify(files));
+    document.getElementById('fname').value = newName;
+    refreshList(newName);
+    msg('تمت إعادة التسمية إلى: ' + newName);
+  }
+
+  function newFolder() {
+    const f = cleanPath(document.getElementById('fold').value);
+    if (!f) { msg('اكتب اسم المجلد أولاً'); return; }
+    const list = getFolders();
+    if (!list.includes(f)) list.push(f);
+    localStorage.setItem(FKEY, JSON.stringify(list));
+    document.getElementById('fold').value = '';
+    refreshList();
+    msg('تم إنشاء المجلد: ' + f + '/');
   }
 
   function openByName(n) {
@@ -308,6 +387,8 @@ const String _pyHtml = r'''
   document.getElementById('open').onclick = openFile;
   document.getElementById('new').onclick = newFile;
   document.getElementById('del').onclick = deleteFile;
+  document.getElementById('ren').onclick = renameFile;
+  document.getElementById('mkdir').onclick = newFolder;
   setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
