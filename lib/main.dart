@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'editor_page.dart';
+import 'home_page.dart';
 import 'python_test_page.dart';
 
 final ValueNotifier<Locale> localeNotifier = ValueNotifier(const Locale('ar'));
@@ -57,20 +57,37 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _titles = ['الرئيسية', 'المحرر', 'الإعدادات'];
 
+  void _openInEditor(String name) {
+    setState(() => _index = 1);
+    editorKey.currentState?.openFile(name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const _PlaceholderPage(text: 'مشاريعك ستظهر هنا'),
-      const PythonTestPage(),
+      HomePage(key: homeKey, onOpen: _openInEditor),
+      PythonTestPage(key: editorKey),
       const _SettingsPage(),
     ];
 
     return Scaffold(
       appBar: AppBar(title: Text(_titles[_index])),
-      body: IndexedStack(index: _index, children: pages),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF0D2B52), Color(0xFF061429)],
+          ),
+        ),
+        child: IndexedStack(index: _index, children: pages),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          setState(() => _index = i);
+          if (i == 0) homeKey.currentState?.reload();
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'الرئيسية'),
           NavigationDestination(icon: Icon(Icons.code), label: 'المحرر'),
@@ -79,15 +96,6 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
   }
-}
-
-class _PlaceholderPage extends StatelessWidget {
-  final String text;
-  const _PlaceholderPage({required this.text});
-
-  @override
-  Widget build(BuildContext context) =>
-      Center(child: Text(text, style: Theme.of(context).textTheme.titleMedium));
 }
 
 class _SettingsPage extends StatelessWidget {
