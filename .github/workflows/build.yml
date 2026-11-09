@@ -23,15 +23,29 @@ jobs:
       - name: Generate Android platform files
         run: flutter create . --platforms=android --project-name code_studio_mobile
 
-      - name: Show Gradle files
+      - name: Add Chaquopy (Python) to Android build
         run: |
-          ls android/app
-          echo "----- root build -----"
-          cat android/build.gradle* || true
-          echo "----- app build -----"
-          cat android/app/build.gradle* || true
-          echo "----- settings -----"
-          cat android/settings.gradle* || true
+          # 1) تعريف الإضافة في settings.gradle.kts
+          sed -i '/id("org.jetbrains.kotlin.android")/a\    id("com.chaquo.python") version "16.1.0" apply false' android/settings.gradle.kts
+
+          # 2) تفعيل الإضافة في app/build.gradle.kts
+          sed -i 's/id("dev.flutter.flutter-gradle-plugin")/id("dev.flutter.flutter-gradle-plugin")\n    id("com.chaquo.python")/' android/app/build.gradle.kts
+
+          # 3) تحديد معماريات الهاتف المدعومة
+          sed -i 's/versionName = flutter.versionName/versionName = flutter.versionName\n        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }/' android/app/build.gradle.kts
+
+          # 4) تحديد نسخة Python
+          cat >> android/app/build.gradle.kts << 'EOF'
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+    }
+}
+EOF
+
+          echo "---- app build.gradle.kts after patch ----"
+          cat android/app/build.gradle.kts
 
       - run: flutter pub get
 
