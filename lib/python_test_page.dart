@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-const String _pyHtml = '''
+const String _pyHtml = r'''
 <!DOCTYPE html>
 <html dir="rtl">
 <head>
@@ -86,7 +86,7 @@ const String _pyHtml = '''
   }
 
   function highlight(src) {
-    const re = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)/g;
+    const re = /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)/g;
     let out = '', last = 0, m;
     while ((m = re.exec(src)) !== null) {
       out += esc(src.slice(last, m.index));
@@ -179,7 +179,6 @@ const String _pyHtml = '''
     openFile();
   }
 
-  // إعادة التلوين أثناء الكتابة مع حفظ موضع المؤشر
   let timer = null;
   function getCaret(el) {
     const sel = window.getSelection();
