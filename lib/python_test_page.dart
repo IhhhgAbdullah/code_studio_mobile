@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -115,6 +116,11 @@ for i in range(3):
     msg('تم فتح: ' + name);
   }
 
+  function openByName(n) {
+    refreshList(n);
+    openFile();
+  }
+
   let pyodide = null;
 
   function log(s) {
@@ -172,14 +178,16 @@ for i in range(3):
 </html>
 ''';
 
+final GlobalKey<PythonTestPageState> editorKey = GlobalKey<PythonTestPageState>();
+
 class PythonTestPage extends StatefulWidget {
   const PythonTestPage({super.key});
 
   @override
-  State<PythonTestPage> createState() => _PythonTestPageState();
+  State<PythonTestPage> createState() => PythonTestPageState();
 }
 
-class _PythonTestPageState extends State<PythonTestPage> {
+class PythonTestPageState extends State<PythonTestPage> {
   late final WebViewController _controller;
 
   @override
@@ -188,6 +196,10 @@ class _PythonTestPageState extends State<PythonTestPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..loadHtmlString(_pyHtml, baseUrl: 'https://localhost/');
+  }
+
+  void openFile(String name) {
+    _controller.runJavaScript('openByName(${jsonEncode(name)})');
   }
 
   @override
