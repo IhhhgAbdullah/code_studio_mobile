@@ -17,7 +17,7 @@ const String _pyHtml = r'''
     padding: 12px; margin-bottom: 12px;
   }
   .card-title { color: #D4AF37; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
-  input, select {
+  input, select, textarea {
     width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 10px;
     border: 1px solid #D4AF37; background: #0A1F3D; color: #fff; font-size: 15px;
   }
@@ -73,6 +73,10 @@ const String _pyHtml = r'''
   <div class="row" style="margin-top:8px">
     <button id="mkdir" class="alt">مجلد جديد</button>
   </div>
+  <div class="row" style="margin-top:8px">
+    <button id="exp" class="alt">تصدير الكل</button>
+  </div>
+  <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا"></textarea>
   <div id="msg" class="msg"></div>
 </div>
 <div class="card">
@@ -229,7 +233,6 @@ const String _pyHtml = r'''
     msg('تم حذف: ' + name);
   }
 
-  // إعادة التسمية الحقيقية: تنقل الملف المختار مع الكود الموجود في المحرر إلى الاسم الجديد
   function renameFile() {
     const oldName = document.getElementById('files').value;
     const files = getFiles();
@@ -254,6 +257,15 @@ const String _pyHtml = r'''
     document.getElementById('fold').value = '';
     refreshList();
     msg('تم إنشاء المجلد: ' + f + '/');
+  }
+
+  // تصدير: يجمع الملفات والمجلدات في نص JSON واحد
+  function exportAll() {
+    const data = { app: 'code_studio_mobile', version: 1,
+      folders: getFolders(), files: getFiles() };
+    const text = JSON.stringify(data, null, 2);
+    document.getElementById('xdata').value = text;
+    msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
 
   function openByName(n) {
@@ -390,6 +402,7 @@ const String _pyHtml = r'''
   document.getElementById('del').onclick = deleteFile;
   document.getElementById('ren').onclick = renameFile;
   document.getElementById('mkdir').onclick = newFolder;
+  document.getElementById('exp').onclick = exportAll;
   setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
