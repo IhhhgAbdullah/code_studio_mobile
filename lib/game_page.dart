@@ -3,7 +3,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 const String _gameHtml = r'''
 <!DOCTYPE html>
-<html dir="rtl">
+<html dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -11,8 +11,8 @@ const String _gameHtml = r'''
   * { box-sizing: border-box; }
   body { font-family: sans-serif; margin: 0; padding: 10px; background: #0D2B52; color: #fff; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
-  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 6px; }
-  textarea { width: 100%; height: 190px; background: #0A1F3D; color: #e6edf7; border: none;
+  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 6px; direction: rtl; text-align: right; }
+  textarea { width: 100%; height: 170px; background: #0A1F3D; color: #e6edf7; border: none;
     border-radius: 10px; padding: 10px; font-family: monospace; font-size: 14px; direction: ltr; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
@@ -20,7 +20,8 @@ const String _gameHtml = r'''
     background: #D4AF37; color: #0D2B52; font-weight: bold; }
   button.alt { background: #2A4A7A; color: #fff; }
   button.danger { background: #8B2A2A; color: #fff; }
-  canvas { width: 100%; background: #0A1F3D; border-radius: 10px; display: block; touch-action: none; }
+  #wrap { width: 100%; }
+  canvas { width: 100%; height: auto; background: #0A1F3D; border-radius: 10px; display: block; touch-action: none; }
   .msg { color: #ff6b6b; font-size: 13px; margin-top: 6px; min-height: 16px; direction: ltr; text-align: left; }
 </style>
 </head>
@@ -37,7 +38,7 @@ const String _gameHtml = r'''
 </div>
 <div class="card">
   <div class="title">الشاشة (على الهاتف حرّك اللاعب بلمس الشاشة)</div>
-  <canvas id="cv" width="360" height="480"></canvas>
+  <div id="wrap"><canvas id="cv" width="360" height="480"></canvas></div>
 </div>
 <script>
   const cv = document.getElementById('cv');
@@ -47,41 +48,94 @@ const String _gameHtml = r'''
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
 
-  const SAMPLE = `let x = 180, y = 240, coins = [], score = 0;
+  const SAMPLE = `let player, coins, enemies, score, timeLeft, gameOver;
+
 function setup() {
-  for (let i = 0; i < 6; i++) {
-    coins.push({ x: 40 + i * 55, y: 80 + (i % 2) * 300, r: 12 });
+  player = { x: 180, y: 420, speed: 220 };
+  coins = [];
+  enemies = [];
+  score = 0;
+  timeLeft = 30;
+  gameOver = false;
+  for (let i = 0; i < 8; i++) {
+    coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300, r: 9 });
+  }
+  for (let i = 0; i < 3; i++) {
+    enemies.push({
+      x: 40 + Math.random() * 280,
+      y: 60 + Math.random() * 200,
+      vx: (Math.random() < 0.5 ? -1 : 1) * 90,
+      vy: (Math.random() < 0.5 ? -1 : 1) * 70,
+      r: 14
+    });
   }
 }
+
 function update(dt) {
-  const s = 180 * dt;
-  if (keys.ArrowLeft) x -= s;
-  if (keys.ArrowRight) x += s;
-  if (keys.ArrowUp) y -= s;
-  if (keys.ArrowDown) y += s;
+  if (gameOver) return;
+  timeLeft -= dt;
+  if (timeLeft <= 0) { timeLeft = 0; gameOver = true; return; }
+  const s = player.speed * dt;
+  if (keys.ArrowLeft) player.x -= s;
+  if (keys.ArrowRight) player.x += s;
+  if (keys.ArrowUp) player.y -= s;
+  if (keys.ArrowDown) player.y += s;
   if (touch.down) {
-    x += (touch.x - x) * 0.12;
-    y += (touch.y - y) * 0.12;
+    player.x += (touch.x - player.x) * 0.1;
+    player.y += (touch.y - player.y) * 0.1;
   }
-  x = Math.max(16, Math.min(W - 16, x));
-  y = Math.max(16, Math.min(H - 16, y));
+  player.x = Math.max(12, Math.min(W - 12, player.x));
+  player.y = Math.max(12, Math.min(H - 12, player.y));
+  for (const e of enemies) {
+    e.x += e.vx * dt;
+    e.y += e.vy * dt;
+    if (e.x < e.r || e.x > W - e.r) e.vx = -e.vx;
+    if (e.y < e.r || e.y > H - e.r) e.vy = -e.vy;
+    if (Math.hypot(e.x - player.x, e.y - player.y) < e.r + 12) {
+      score = Math.max(0, score - 5);
+      player.x = 180; player.y = 420;
+    }
+  }
   coins = coins.filter(c => {
-    if (Math.hypot(c.x - x, c.y - y) < c.r + 16) { score++; return false; }
+    if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + 14) { score += 10; return false; }
     return true;
   });
+  if (coins.length === 0) {
+    for (let i = 0; i < 8; i++) {
+      coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300, r: 9 });
+    }
+  }
 }
+
 function draw(ctx) {
   ctx.fillStyle = '#D4AF37';
-  coins.forEach(c => {
+  for (const c of coins) {
     ctx.beginPath();
     ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
     ctx.fill();
-  });
+  }
+  ctx.fillStyle = '#FF6B6B';
+  for (const e of enemies) {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.fillStyle = '#7CFC7C';
-  ctx.fillRect(x - 16, y - 16, 32, 32);
+  ctx.fillRect(player.x - 12, player.y - 12, 24, 24);
   ctx.fillStyle = '#fff';
   ctx.font = '16px sans-serif';
   ctx.fillText('النقاط: ' + score, 10, 24);
+  ctx.fillText('الوقت: ' + Math.ceil(timeLeft), 240, 24);
+  if (gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#D4AF37';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText('انتهت اللعبة', 90, 230);
+    ctx.font = '18px sans-serif';
+    ctx.fillText('نتيجتك: ' + score, 115, 265);
+    ctx.fillText('اضغط تشغيل للعب مرة أخرى', 40, 300);
+  }
 }`;
 
   codeEl.value = SAMPLE;
