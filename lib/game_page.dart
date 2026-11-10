@@ -48,6 +48,66 @@ const String _gameHtml = r'''
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
 
+  // ===== الأصول المدمجة =====
+  const sprites = {};
+  function makeSprite(name, w, h, draw) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    draw(c.getContext('2d'), w, h);
+    sprites[name] = c;
+  }
+  makeSprite('coin', 24, 24, (g, w, h) => {
+    g.fillStyle = '#D4AF37';
+    g.beginPath(); g.arc(w / 2, h / 2, 11, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#F7E08A';
+    g.beginPath(); g.arc(w / 2 - 3, h / 2 - 3, 4, 0, Math.PI * 2); g.fill();
+  });
+  makeSprite('enemy', 32, 32, (g, w, h) => {
+    g.fillStyle = '#FF6B6B';
+    g.beginPath(); g.arc(w / 2, h / 2, 14, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff';
+    g.fillRect(w / 2 - 6, h / 2 - 4, 4, 4);
+    g.fillRect(w / 2 + 2, h / 2 - 4, 4, 4);
+  });
+  makeSprite('player', 28, 28, (g, w, h) => {
+    g.fillStyle = '#7CFC7C';
+    g.fillRect(2, 2, w - 4, h - 4);
+    g.fillStyle = '#173404';
+    g.fillRect(8, 9, 4, 4);
+    g.fillRect(16, 9, 4, 4);
+  });
+
+  // ===== الأصوات المولّدة =====
+  let audioCtx = null;
+  function beep(freq, dur, type) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type || 'square';
+      o.frequency.value = freq;
+      g.gain.value = 0.08;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+  const sounds = {
+    coin: () => beep(880, 0.08, 'sine'),
+    hit: () => beep(140, 0.25, 'sawtooth'),
+    win: () => { beep(523, 0.1, 'triangle'); setTimeout(() => beep(784, 0.2, 'triangle'), 110); },
+    over: () => { beep(330, 0.2, 'sawtooth'); setTimeout(() => beep(220, 0.4, 'sawtooth'), 200); }
+  };
+
+  // أداة مساعدة للكود: رسم صورة أو تشغيل صوت باسمه
+  function sprite(ctx, name, x, y) {
+    const img = sprites[name];
+    if (img) ctx.drawImage(img, x - img.width / 2, y - img.height / 2);
+  }
+  function sound(name) {
+    if (sounds[name]) sounds[name]();
+  }
+
   const SAMPLE = `let player, coins, enemies, score, lives, level, timeLeft, state;
 let best = Number(localStorage.getItem('cs_best') || 0);
 
@@ -56,15 +116,14 @@ function startLevel() {
   coins = [];
   enemies = [];
   for (let i = 0; i < n; i++) {
-    coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300, r: 9 });
+    coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300 });
   }
   for (let i = 0; i < Math.min(1 + level, 6); i++) {
     enemies.push({
       x: 40 + Math.random() * 280,
       y: 60 + Math.random() * 200,
       vx: (Math.random() < 0.5 ? -1 : 1) * (70 + level * 15),
-      vy: (Math.random() < 0.5 ? -1 : 1) * (60 + level * 15),
-      r: 14
+      vy: (Math.random() < 0.5 ? -1 : 1) * (60 + level * 15)
     });
   }
   player.x = 180; player.y = 420;
@@ -82,6 +141,7 @@ function setup() {
 
 function endGame() {
   state = 'over';
+  sound('over');
   if (score > best) {
     best = score;
     localStorage.setItem('cs_best', String(best));
@@ -102,48 +162,40 @@ function update(dt) {
     player.x += (touch.x - player.x) * 0.1;
     player.y += (touch.y - player.y) * 0.1;
   }
-  player.x = Math.max(12, Math.min(W - 12, player.x));
-  player.y = Math.max(12, Math.min(H - 12, player.y));
+  player.x = Math.max(14, Math.min(W - 14, player.x));
+  player.y = Math.max(14, Math.min(H - 14, player.y));
 
   for (const e of enemies) {
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    if (e.x < e.r || e.x > W - e.r) e.vx = -e.vx;
-    if (e.y < e.r || e.y > H - e.r) e.vy = -e.vy;
-    if (Math.hypot(e.x - player.x, e.y - player.y) < e.r + 12) {
+    if (e.x < 16 || e.x > W - 16) e.vx = -e.vx;
+    if (e.y < 16 || e.y > H - 16) e.vy = -e.vy;
+    if (Math.hypot(e.x - player.x, e.y - player.y) < 26) {
       lives--;
+      sound('hit');
       player.x = 180; player.y = 420;
       if (lives <= 0) return endGame();
     }
   }
 
   coins = coins.filter(c => {
-    if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + 14) { score += 10; return false; }
+    if (Math.hypot(c.x - player.x, c.y - player.y) < 24) { score += 10; sound('coin'); return false; }
     return true;
   });
 
   if (coins.length === 0) {
     level++;
     score += 50;
+    sound('win');
     startLevel();
   }
 }
 
 function draw(ctx) {
   ctx.fillStyle = '#D4AF37';
-  for (const c of coins) {
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = '#FF6B6B';
-  for (const e of enemies) {
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = '#7CFC7C';
-  ctx.fillRect(player.x - 12, player.y - 12, 24, 24);
+  for (const c of coins) sprite(ctx, 'coin', c.x, c.y);
+  for (const e of enemies) sprite(ctx, 'enemy', e.x, e.y);
+  sprite(ctx, 'player', player.x, player.y);
 
   ctx.fillStyle = '#fff';
   ctx.font = '15px sans-serif';
@@ -203,7 +255,7 @@ function draw(ctx) {
     let g;
     try {
       const src = codeEl.value + '\n;return { setup: typeof setup === "function" ? setup : null, update: typeof update === "function" ? update : null, draw: typeof draw === "function" ? draw : null };';
-      g = new Function('ctx', 'keys', 'touch', 'W', 'H', src)(ctx, keys, touch, cv.width, cv.height);
+      g = new Function('ctx', 'keys', 'touch', 'W', 'H', 'sprite', 'sound', src)(ctx, keys, touch, cv.width, cv.height, (c, n, x, y) => sprite(c, n, x, y), sound);
       if (g.setup) g.setup();
     } catch (e) {
       errEl.textContent = 'خطأ في الكود: ' + e;
