@@ -60,5 +60,60 @@ jobs:
 
       - name: Allow internet permission
         run: |
-          sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
-          grep -n "
+          python3 - << 'PYEOF'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          perm = '    <uses-permission android:name="android.permission.INTERNET"/>\n'
+          if 'android.permission.INTERNET' not in s:
+              s = s.replace('<manifest', '<manifest', 1)
+              i = s.index('>', s.index('<manifest')) + 1
+              s = s[:i] + '\n' + perm + s[i:]
+          open(p, 'w', encoding='utf-8').write(s)
+          PYEOF
+          grep -n "INTERNET" android/app/src/main/AndroidManifest.xml
+
+      - name: Create upload keystore from secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+          ls -l "$RUNNER_TEMP/upload-keystore.jks"
+          {
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
+          } > android/key.properties
+
+      - name: Wire upload signing into Gradle
+        run: |
+          python3 - << 'PYEOF'
+          p = 'android/app/build.gradle.kts'
+          s = open(p, encoding='utf-8').read()
+          header = 'import java.util.Properties\nimport java.io.FileInputStream\n\nval keystoreProperties = Properties()\nval keystorePropertiesFile = rootProject.file("key.properties")\nif (keystorePropertiesFile.exists()) {\n    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n}\n\n'
+          s = header + s
+          signing = 'signingConfigs {\n        create("release") {\n            keyAlias = keystoreProperties["keyAlias"] as String\n            keyPassword = keystoreProperties["keyPassword"] as String\n            storeFile = file(keystoreProperties["storeFile"] as String)\n            storePassword = keystoreProperties["storePassword"] as String\n        }\n    }\n    '
+          s = s.replace('    buildTypes {', '    ' + signing + 'buildTypes {', 1)
+          s = s.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("release")')
+          open(p, 'w', encoding='utf-8').write(s)
+          PYEOF
+          grep -n "signingConfig" android/app/build.gradle.kts
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-studio-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - run: flutter build appbundle --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-studio-aab
+          path: build/app/outputs/bundle/release/app-release.aab
