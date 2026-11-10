@@ -37,7 +37,7 @@ const String _gameHtml = r'''
   <div id="err" class="msg"></div>
 </div>
 <div class="card">
-  <div class="title">الشاشة (على الهاتف حرّك اللاعب بلمس الشاشة)</div>
+  <div class="title">الشاشة (حرّك اللاعب بالأسهم أو بلمس الشاشة)</div>
   <div id="wrap"><canvas id="cv" width="360" height="480"></canvas></div>
 </div>
 <script>
@@ -48,33 +48,51 @@ const String _gameHtml = r'''
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
 
-  const SAMPLE = `let player, coins, enemies, score, timeLeft, gameOver;
+  const SAMPLE = `let player, coins, enemies, score, lives, level, timeLeft, state;
+let best = Number(localStorage.getItem('cs_best') || 0);
 
-function setup() {
-  player = { x: 180, y: 420, speed: 220 };
+function startLevel() {
+  const n = 6 + level * 2;
   coins = [];
   enemies = [];
-  score = 0;
-  timeLeft = 30;
-  gameOver = false;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < n; i++) {
     coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300, r: 9 });
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.min(1 + level, 6); i++) {
     enemies.push({
       x: 40 + Math.random() * 280,
       y: 60 + Math.random() * 200,
-      vx: (Math.random() < 0.5 ? -1 : 1) * 90,
-      vy: (Math.random() < 0.5 ? -1 : 1) * 70,
+      vx: (Math.random() < 0.5 ? -1 : 1) * (70 + level * 15),
+      vy: (Math.random() < 0.5 ? -1 : 1) * (60 + level * 15),
       r: 14
     });
+  }
+  player.x = 180; player.y = 420;
+  timeLeft = 30;
+}
+
+function setup() {
+  player = { x: 180, y: 420, speed: 220 };
+  score = 0;
+  lives = 3;
+  level = 1;
+  state = 'play';
+  startLevel();
+}
+
+function endGame() {
+  state = 'over';
+  if (score > best) {
+    best = score;
+    localStorage.setItem('cs_best', String(best));
   }
 }
 
 function update(dt) {
-  if (gameOver) return;
+  if (state !== 'play') return;
   timeLeft -= dt;
-  if (timeLeft <= 0) { timeLeft = 0; gameOver = true; return; }
+  if (timeLeft <= 0) { lives--; if (lives <= 0) return endGame(); startLevel(); return; }
+
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
@@ -86,24 +104,28 @@ function update(dt) {
   }
   player.x = Math.max(12, Math.min(W - 12, player.x));
   player.y = Math.max(12, Math.min(H - 12, player.y));
+
   for (const e of enemies) {
     e.x += e.vx * dt;
     e.y += e.vy * dt;
     if (e.x < e.r || e.x > W - e.r) e.vx = -e.vx;
     if (e.y < e.r || e.y > H - e.r) e.vy = -e.vy;
     if (Math.hypot(e.x - player.x, e.y - player.y) < e.r + 12) {
-      score = Math.max(0, score - 5);
+      lives--;
       player.x = 180; player.y = 420;
+      if (lives <= 0) return endGame();
     }
   }
+
   coins = coins.filter(c => {
     if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + 14) { score += 10; return false; }
     return true;
   });
+
   if (coins.length === 0) {
-    for (let i = 0; i < 8; i++) {
-      coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300, r: 9 });
-    }
+    level++;
+    score += 50;
+    startLevel();
   }
 }
 
@@ -122,19 +144,25 @@ function draw(ctx) {
   }
   ctx.fillStyle = '#7CFC7C';
   ctx.fillRect(player.x - 12, player.y - 12, 24, 24);
+
   ctx.fillStyle = '#fff';
-  ctx.font = '16px sans-serif';
-  ctx.fillText('النقاط: ' + score, 10, 24);
-  ctx.fillText('الوقت: ' + Math.ceil(timeLeft), 240, 24);
-  if (gameOver) {
+  ctx.font = '15px sans-serif';
+  ctx.fillText('النقاط: ' + score, 8, 22);
+  ctx.fillText('المرحلة: ' + level, 130, 22);
+  ctx.fillText('الوقت: ' + Math.ceil(timeLeft), 250, 22);
+  ctx.fillText('الحياة: ' + '♥'.repeat(Math.max(0, lives)), 8, 44);
+  ctx.fillText('أفضل: ' + best, 250, 44);
+
+  if (state === 'over') {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#D4AF37';
     ctx.font = 'bold 26px sans-serif';
-    ctx.fillText('انتهت اللعبة', 90, 230);
+    ctx.fillText('انتهت اللعبة', 90, 220);
     ctx.font = '18px sans-serif';
-    ctx.fillText('نتيجتك: ' + score, 115, 265);
-    ctx.fillText('اضغط تشغيل للعب مرة أخرى', 40, 300);
+    ctx.fillText('نتيجتك: ' + score, 115, 255);
+    ctx.fillText('أفضل نتيجة: ' + best, 100, 285);
+    ctx.fillText('اضغط تشغيل للعب مرة أخرى', 40, 320);
   }
 }`;
 
