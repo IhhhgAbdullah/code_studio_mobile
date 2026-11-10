@@ -187,9 +187,8 @@ const String _pyHtml = r'''
       if (inside.length) {
         inside.forEach(n => g.appendChild(opt(n, n.slice(f.length + 1))));
       } else {
-        const e = opt('', '(مجلد فارغ)');
-        e.disabled = true;
-        g.appendChild(e);
+        // مجلد فارغ: قيمته "folder:" ليكون قابلاً للاختيار والحذف
+        g.appendChild(opt('folder:' + f, '(مجلد فارغ، اضغط حذف لإزالته)'));
       }
       sel.appendChild(g);
     });
@@ -218,6 +217,7 @@ const String _pyHtml = r'''
   function openFile() {
     const name = document.getElementById('files').value;
     const files = getFiles();
+    if (name.startsWith('folder:')) { msg('هذا مجلد، اختر ملفاً لفتحه'); return; }
     if (!name || !(name in files)) { msg('لا يوجد ملف محفوظ لفتحه'); return; }
     setCode(files[name]);
     document.getElementById('fname').value = name;
@@ -232,19 +232,30 @@ const String _pyHtml = r'''
   }
 
   function deleteFile() {
-    const name = document.getElementById('files').value;
+    const sel = document.getElementById('files').value;
     const files = getFiles();
-    if (!name || !(name in files)) { msg('لا يوجد ملف محدد للحذف'); return; }
-    delete files[name];
+
+    // حذف مجلد فارغ
+    if (sel.startsWith('folder:')) {
+      const f = sel.slice('folder:'.length);
+      const list = getFolders().filter(x => x !== f);
+      localStorage.setItem(FKEY, JSON.stringify(list));
+      refreshList();
+      msg('تم حذف المجلد: ' + f + '/');
+      return;
+    }
+
+    if (!sel || !(sel in files)) { msg('لا يوجد ملف محدد للحذف'); return; }
+    delete files[sel];
     localStorage.setItem(KEY, JSON.stringify(files));
     refreshList();
-    msg('تم حذف: ' + name);
+    msg('تم حذف: ' + sel);
   }
 
   function renameFile() {
     const oldName = document.getElementById('files').value;
     const files = getFiles();
-    if (!oldName || !(oldName in files)) { msg('اختر ملفاً من القائمة أولاً'); return; }
+    if (!oldName || oldName.startsWith('folder:') || !(oldName in files)) { msg('اختر ملفاً من القائمة أولاً'); return; }
     const newName = cleanName(document.getElementById('fname').value);
     if (newName === oldName) { msg('الاسم الجديد مطابق للقديم، غيّر الاسم في الحقل أولاً'); return; }
     if (newName in files) { msg('يوجد ملف بهذا الاسم: ' + newName); return; }
