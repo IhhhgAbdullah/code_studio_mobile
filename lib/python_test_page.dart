@@ -75,8 +75,9 @@ const String _pyHtml = r'''
   </div>
   <div class="row" style="margin-top:8px">
     <button id="exp" class="alt">تصدير الكل</button>
+    <button id="imp" class="alt">استيراد</button>
   </div>
-  <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا"></textarea>
+  <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا"></textarea>
   <div id="msg" class="msg"></div>
 </div>
 <div class="card">
@@ -268,6 +269,39 @@ const String _pyHtml = r'''
     msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
 
+  // استيراد: يقرأ نص التصدير من الحقل ويدمج الملفات والمجلدات
+  // الملف الذي له نفس الاسم يُستبدل بالنسخة المستوردة
+  function importAll() {
+    const raw = document.getElementById('xdata').value.trim();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch (e) { msg('النص ليس JSON صالحاً. الصق نص التصدير كاملاً.'); return; }
+    if (!data || data.app !== 'code_studio_mobile' || typeof data.files !== 'object') {
+      msg('هذا النص ليس تصديراً من التطبيق');
+      return;
+    }
+    const files = getFiles();
+    const names = Object.keys(data.files);
+    names.forEach(n => {
+      const clean = cleanPath(n);
+      if (clean) files[clean] = String(data.files[n]);
+    });
+    try {
+      localStorage.setItem(KEY, JSON.stringify(files));
+    } catch (e) {
+      msg('تعذّر الاستيراد: ' + e);
+      return;
+    }
+    const folders = new Set(getFolders());
+    (data.folders || []).forEach(f => {
+      const clean = cleanPath(f);
+      if (clean) folders.add(clean);
+    });
+    localStorage.setItem(FKEY, JSON.stringify([...folders]));
+    refreshList();
+    msg('تم الاستيراد: ' + names.length + ' ملف. الملفات التي لها نفس الاسم استُبدلت.');
+  }
+
   function openByName(n) {
     refreshList(n);
     openFile();
@@ -403,6 +437,7 @@ const String _pyHtml = r'''
   document.getElementById('ren').onclick = renameFile;
   document.getElementById('mkdir').onclick = newFolder;
   document.getElementById('exp').onclick = exportAll;
+  document.getElementById('imp').onclick = importAll;
   setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
