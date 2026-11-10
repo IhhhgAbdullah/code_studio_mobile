@@ -39,4 +39,86 @@ jobs:
                 <stop offset="0" stop-color="#F7E08A"/>
                 <stop offset="1" stop-color="#D4AF37"/>
               </linearGradient>
-              <radialGradient id="glow" cx="0.5" cy="0.4" r
+              <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6">
+                <stop offset="0" stop-color="#D4AF37" stop-opacity="0.25"/>
+                <stop offset="1" stop-color="#D4AF37" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+            <circle cx="256" cy="256" r="210" fill="url(#glow)"/>
+            <rect x="34" y="34" width="444" height="444" rx="92" fill="none" stroke="#D4AF37" stroke-opacity="0.6" stroke-width="6"/>
+            <text x="256" y="310" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="210" fill="url(#gold)">CS</text>
+            <rect x="166" y="352" width="180" height="10" rx="5" fill="#D4AF37"/>
+          </svg>
+          EOF
+          convert -background none -density 384 assets/icon.svg -resize 512x512 assets/icon.png
+          convert assets/icon.png -resize 48x48 android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert assets/icon.png -resize 72x72 android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert assets/icon.png -resize 96x96 android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert assets/icon.png -resize 144x144 android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert assets/icon.png -resize 192x192 android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+      - name: Allow internet permission
+        run: |
+          sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>|' android/app/src/main/AndroidManifest.xml
+          grep -n "INTERNET" android/app/src/main/AndroidManifest.xml
+
+      - name: Create upload keystore from secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/upload-keystore.jks"
+          ls -l "$RUNNER_TEMP/upload-keystore.jks"
+          cat > android/key.properties << EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=$RUNNER_TEMP/upload-keystore.jks
+          EOF
+
+      - name: Wire upload signing into Gradle
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          p = 'android/app/build.gradle.kts'
+          s = open(p, encoding='utf-8').read()
+          signing = '''
+          val keystoreProps = java.util.Properties()
+          val keystorePropsFile = rootProject.file("key.properties")
+          if (keystorePropsFile.exists()) {
+              keystoreProps.load(keystorePropsFile.inputStream())
+          }
+
+          '''
+          s = s.replace('android {', signing + 'android {', 1)
+          release_sign = '''
+              signingConfigs {
+                  create("release") {
+                      keyAlias = keystoreProps["keyAlias"] as String
+                      keyPassword = keystoreProps["keyPassword"] as String
+                      storeFile = file(keystoreProps["storeFile"] as String)
+                      storePassword = keystoreProps["storePassword"] as String
+                  }
+              }
+          '''
+          s = s.replace('    buildTypes {', release_sign + '    buildTypes {', 1)
+          s = re.sub(r'signingConfig = signingConfigs\.getByName\("debug"\)', 'signingConfig = signingConfigs.getByName("release")', s)
+          open(p, 'w', encoding='utf-8').write(s)
+          PYEOF
+          grep -n "signingConfig" android/app/build.gradle.kts
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-studio-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - run: flutter build appbundle --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-studio-aab
+          path: build/app/outputs/bundle/release/app-release.aab
