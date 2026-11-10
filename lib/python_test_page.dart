@@ -41,6 +41,8 @@ const String _pyHtml = r'''
     min-height: 90px; margin: 0; direction: ltr; white-space: pre-wrap; text-align: left;
     font-family: monospace; font-size: 14px;
   }
+  #term-in { direction: ltr; font-family: monospace; }
+  #term-out { min-height: 120px; max-height: 260px; overflow-y: auto; }
   .err { color: #ff6b6b; font-weight: bold; }
   .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; }
   .kw { color: #C792EA; font-weight: bold; }
@@ -87,6 +89,11 @@ const String _pyHtml = r'''
 <div class="card">
   <div class="card-title">المخرجات</div>
   <pre id="out">المخرجات ستظهر هنا</pre>
+</div>
+<div class="card">
+  <div class="card-title">الطرفية (سطر واحد، والمتغيرات تبقى)</div>
+  <input id="term-in" placeholder="اكتب سطر Python ثم Enter، مثال: x = 5">
+  <pre id="term-out">طرفية Python جاهزة بعد تحميل Python</pre>
 </div>
 <script>
   const KEY = 'cs_files';
@@ -260,7 +267,6 @@ const String _pyHtml = r'''
     msg('تم إنشاء المجلد: ' + f + '/');
   }
 
-  // تصدير: يجمع الملفات والمجلدات في نص JSON واحد
   function exportAll() {
     const data = { app: 'code_studio_mobile', version: 1,
       folders: getFolders(), files: getFiles() };
@@ -269,8 +275,6 @@ const String _pyHtml = r'''
     msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
 
-  // استيراد: يقرأ نص التصدير من الحقل ويدمج الملفات والمجلدات
-  // الملف الذي له نفس الاسم يُستبدل بالنسخة المستوردة
   function importAll() {
     const raw = document.getElementById('xdata').value.trim();
     let data;
@@ -383,9 +387,16 @@ const String _pyHtml = r'''
   });
 
   let pyodide = null;
+  let termActive = false;
 
   function log(s) {
     document.getElementById('out').textContent += s + '\n';
+  }
+
+  function tlog(s) {
+    const t = document.getElementById('term-out');
+    t.textContent += s + '\n';
+    t.scrollTop = t.scrollHeight;
   }
 
   function showErr(title, detail) {
@@ -400,6 +411,25 @@ const String _pyHtml = r'''
     out.appendChild(d);
   }
 
+  async function termRun() {
+    const input = document.getElementById('term-in');
+    const line = input.value;
+    if (!line.trim()) return;
+    tlog('>>> ' + line);
+    input.value = '';
+    termActive = true;
+    try {
+      const result = await pyodide.runPythonAsync(line);
+      if (result !== undefined && result !== null) tlog(String(result));
+    } catch (e) {
+      const text = String(e);
+      const lines = text.trim().split('\n');
+      tlog(lines[lines.length - 1]);
+    } finally {
+      termActive = false;
+    }
+  }
+
   async function init() {
     if (typeof loadPyodide !== 'function') {
       throw new Error('ملف Pyodide لم يُحمَّل. تأكد من اتصال الإنترنت.');
@@ -407,13 +437,14 @@ const String _pyHtml = r'''
     pyodide = await loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'
     });
-    pyodide.setStdout({ batched: (s) => log(s) });
-    pyodide.setStderr({ batched: (s) => log(s) });
+    pyodide.setStdout({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
+    pyodide.setStderr({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     const btn = document.getElementById('run');
     btn.disabled = false;
     btn.textContent = 'تشغيل';
     btn.onclick = runCode;
     document.getElementById('out').textContent = 'Python جاهز';
+    document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
   async function runCode() {
@@ -438,6 +469,9 @@ const String _pyHtml = r'''
   document.getElementById('mkdir').onclick = newFolder;
   document.getElementById('exp').onclick = exportAll;
   document.getElementById('imp').onclick = importAll;
+  document.getElementById('term-in').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); termRun(); }
+  });
   setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
