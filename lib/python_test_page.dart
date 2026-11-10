@@ -91,8 +91,8 @@ const String _pyHtml = r'''
   <pre id="out">المخرجات ستظهر هنا</pre>
 </div>
 <div class="card">
-  <div class="card-title">الطرفية (سطر واحد، والمتغيرات تبقى)</div>
-  <input id="term-in" placeholder="اكتب سطر Python ثم Enter، مثال: x = 5">
+  <div class="card-title">الطرفية (تدعم الكتل: سطر ينتهي بـ : ثم سطر فارغ للتنفيذ)</div>
+  <input id="term-in" placeholder="اكتب سطر Python ثم Enter">
   <pre id="term-out">طرفية Python جاهزة بعد تحميل Python</pre>
 </div>
 <script>
@@ -388,6 +388,7 @@ const String _pyHtml = r'''
 
   let pyodide = null;
   let termActive = false;
+  let termBlock = [];
 
   function log(s) {
     document.getElementById('out').textContent += s + '\n';
@@ -411,23 +412,48 @@ const String _pyHtml = r'''
     out.appendChild(d);
   }
 
-  async function termRun() {
-    const input = document.getElementById('term-in');
-    const line = input.value;
-    if (!line.trim()) return;
-    tlog('>>> ' + line);
-    input.value = '';
+  async function termExec(src) {
     termActive = true;
     try {
-      const result = await pyodide.runPythonAsync(line);
+      const result = await pyodide.runPythonAsync(src);
       if (result !== undefined && result !== null) tlog(String(result));
     } catch (e) {
-      const text = String(e);
-      const lines = text.trim().split('\n');
+      const lines = String(e).trim().split('\n');
       tlog(lines[lines.length - 1]);
     } finally {
       termActive = false;
     }
+  }
+
+  async function termRun() {
+    const input = document.getElementById('term-in');
+    const line = input.value;
+    input.value = '';
+
+    if (termBlock.length === 0) {
+      if (!line.trim()) return;
+      if (line.trimEnd().endsWith(':')) {
+        termBlock.push(line);
+        tlog('... ' + line);
+        input.placeholder = '... اكتب أسطر الكتلة مسافة بادئة، ثم سطراً فارغاً للتنفيذ';
+        return;
+      }
+      tlog('>>> ' + line);
+      await termExec(line);
+      return;
+    }
+
+    if (!line.trim()) {
+      const block = termBlock.join('\n') + '\n';
+      termBlock = [];
+      input.placeholder = 'اكتب سطر Python ثم Enter';
+      tlog('[تنفيذ الكتلة]');
+      await termExec(block);
+      return;
+    }
+
+    termBlock.push(line);
+    tlog('... ' + line);
   }
 
   async function init() {
