@@ -26,6 +26,13 @@ const String _gameHtml = r'''
   .list { margin-top: 8px; max-height: 120px; overflow-y: auto; }
   .item { display: flex; justify-content: space-between; align-items: center;
     background: #0A1F3D; border-radius: 8px; padding: 6px 10px; margin-bottom: 4px; font-size: 13px; }
+  .item.sel { outline: 1px solid #D4AF37; }
+  .props { background: #0A1F3D; border-radius: 10px; padding: 10px; margin-top: 8px; }
+  .prop { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .prop label { min-width: 52px; }
+  .prop input[type=range] { flex: 1; }
+  .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
+  .prop span { min-width: 36px; text-align: left; direction: ltr; }
   .msg { color: #ff6b6b; font-size: 13px; margin-top: 6px; min-height: 16px; direction: ltr; text-align: left; }
 </style>
 </head>
@@ -40,6 +47,7 @@ const String _gameHtml = r'''
   </div>
   <div id="wrap" style="margin-top:8px"><canvas id="cv" width="360" height="480"></canvas></div>
   <div id="list" class="list"></div>
+  <div id="props" class="props" style="display:none"></div>
 </div>
 <div class="card">
   <div class="title">كود اللعبة (يتولّد تلقائياً من الشاشة، ويمكن تعديله)</div>
@@ -57,14 +65,20 @@ const String _gameHtml = r'''
   const codeEl = document.getElementById('code');
   const errEl = document.getElementById('err');
   const listEl = document.getElementById('list');
+  const propsEl = document.getElementById('props');
   const keys = {};
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
   let kind = 'coin';
   let objects = [];
+  let selected = -1;
 
-  const COLORS = { player: '#7CFC7C', coin: '#D4AF37', enemy: '#FF6B6B', wall: '#7A8CA8' };
-  const SIZES = { player: 24, coin: 20, enemy: 28, wall: 40 };
+  const DEFAULTS = {
+    player: { color: '#7CFC7C', size: 24, speed: 200 },
+    coin: { color: '#D4AF37', size: 20, speed: 0 },
+    enemy: { color: '#FF6B6B', size: 28, speed: 80 },
+    wall: { color: '#7A8CA8', size: 40, speed: 0 }
+  };
   const LABELS = { player: 'لاعب', coin: 'عملة', enemy: 'عدو', wall: 'حاجز' };
 
   // ===== الأصول المدمجة =====
@@ -127,30 +141,41 @@ const String _gameHtml = r'''
   function redrawEditor() {
     ctx2d.fillStyle = '#0A1F3D';
     ctx2d.fillRect(0, 0, cv.width, cv.height);
-    for (const o of objects) {
+    objects.forEach((o, i) => {
+      ctx2d.fillStyle = o.color;
       if (o.kind === 'wall') {
-        ctx2d.fillStyle = COLORS.wall;
-        ctx2d.fillRect(o.x - 20, o.y - 10, 40, 20);
+        ctx2d.fillRect(o.x - o.size / 2, o.y - o.size / 4, o.size, o.size / 2);
       } else {
-        ctx2d.fillStyle = COLORS[o.kind];
         ctx2d.beginPath();
-        ctx2d.arc(o.x, o.y, SIZES[o.kind] / 2, 0, Math.PI * 2);
+        ctx2d.arc(o.x, o.y, o.size / 2, 0, Math.PI * 2);
         ctx2d.fill();
       }
-    }
+      if (i === selected) {
+        ctx2d.strokeStyle = '#fff';
+        ctx2d.lineWidth = 2;
+        ctx2d.strokeRect(o.x - o.size / 2 - 4, o.y - o.size / 2 - 4, o.size + 8, o.size + 8);
+      }
+    });
   }
 
   function renderList() {
     listEl.innerHTML = '';
     objects.forEach((o, i) => {
       const row = document.createElement('div');
-      row.className = 'item';
+      row.className = 'item' + (i === selected ? ' sel' : '');
       const label = document.createElement('span');
       label.textContent = LABELS[o.kind] + ' (' + Math.round(o.x) + ', ' + Math.round(o.y) + ')';
+      label.style.cursor = 'pointer';
+      label.onclick = () => { selected = i; refresh(); };
       const del = document.createElement('button');
       del.className = 'danger';
       del.textContent = 'حذف';
-      del.onclick = () => { objects.splice(i, 1); refresh(); };
+      del.onclick = () => {
+        objects.splice(i, 1);
+        if (selected === i) selected = -1;
+        else if (selected > i) selected--;
+        refresh();
+      };
       row.appendChild(label);
       row.appendChild(del);
       listEl.appendChild(row);
@@ -158,9 +183,65 @@ const String _gameHtml = r'''
     if (!objects.length) listEl.textContent = 'لا توجد كائنات بعد.';
   }
 
+  // لوحة الخصائص للكائن المختار
+  function renderProps() {
+    const o = objects[selected];
+    if (!o) { propsEl.style.display = 'none'; propsEl.innerHTML = ''; return; }
+    propsEl.style.display = 'block';
+    propsEl.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = 'خصائص: ' + LABELS[o.kind];
+    propsEl.appendChild(title);
+
+    propsEl.appendChild(sliderRow('الحجم', 10, 60, 1, o.size, v => { o.size = v; }));
+    if (o.kind === 'enemy' || o.kind === 'player') {
+      propsEl.appendChild(sliderRow('السرعة', 0, 300, 10, o.speed, v => { o.speed = v; }));
+    }
+    propsEl.appendChild(colorRow('اللون', o.color, v => { o.color = v; }));
+  }
+
+  function sliderRow(label, min, max, step, value, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop';
+    const l = document.createElement('label');
+    l.textContent = label;
+    const r = document.createElement('input');
+    r.type = 'range'; r.min = min; r.max = max; r.step = step; r.value = value;
+    const s = document.createElement('span');
+    s.textContent = Math.round(value);
+    r.oninput = () => {
+      const v = Math.round(Number(r.value));
+      s.textContent = v;
+      onChange(v);
+      redrawEditor();
+      generateCode();
+    };
+    row.appendChild(l); row.appendChild(r); row.appendChild(s);
+    return row;
+  }
+
+  function colorRow(label, value, onChange) {
+    const row = document.createElement('div');
+    row.className = 'prop';
+    const l = document.createElement('label');
+    l.textContent = label;
+    const c = document.createElement('input');
+    c.type = 'color'; c.value = value;
+    c.oninput = () => {
+      onChange(c.value);
+      redrawEditor();
+      generateCode();
+    };
+    row.appendChild(l); row.appendChild(c);
+    return row;
+  }
+
   function refresh() {
     redrawEditor();
     renderList();
+    renderProps();
     generateCode();
   }
 
@@ -174,10 +255,10 @@ const String _gameHtml = r'''
 
   cv.addEventListener('click', e => {
     const p = pos(e);
-    if (kind === 'player') {
-      objects = objects.filter(o => o.kind !== 'player');
-    }
-    objects.push({ kind, x: p.x, y: p.y });
+    if (kind === 'player') objects = objects.filter(o => o.kind !== 'player');
+    const d = DEFAULTS[kind];
+    objects.push({ kind, x: p.x, y: p.y, color: d.color, size: d.size, speed: d.speed });
+    selected = objects.length - 1;
     refresh();
   });
 
@@ -188,16 +269,21 @@ const String _gameHtml = r'''
     });
   });
 
-  // توليد الكود من الكائنات المرسومة
+  // توليد الكود من الكائنات وخصائصها
   function generateCode() {
-    const player = objects.find(o => o.kind === 'player') || { x: 180, y: 420 };
-    const coins = objects.filter(o => o.kind === 'coin').map(o => `{ x: ${o.x}, y: ${o.y} }`);
-    const enemies = objects.filter(o => o.kind === 'enemy').map(o => `{ x: ${o.x}, y: ${o.y}, vx: 80, vy: 60 }`);
-    const walls = objects.filter(o => o.kind === 'wall').map(o => `{ x: ${o.x}, y: ${o.y} }`);
+    const p = objects.find(o => o.kind === 'player');
+    const px = p ? p.x : 180, py = p ? p.y : 420;
+    const pspeed = p ? p.speed : 200;
+    const coins = objects.filter(o => o.kind === 'coin')
+      .map(o => `{ x: ${o.x}, y: ${o.y}, r: ${o.size / 2} }`);
+    const enemies = objects.filter(o => o.kind === 'enemy')
+      .map(o => `{ x: ${o.x}, y: ${o.y}, r: ${o.size / 2}, vx: ${o.speed}, vy: ${Math.round(o.speed * 0.7)}, color: "${o.color}" }`);
+    const walls = objects.filter(o => o.kind === 'wall')
+      .map(o => `{ x: ${o.x}, y: ${o.y}, w: ${o.size}, h: ${Math.round(o.size / 2)}, color: "${o.color}" }`);
     codeEl.value = `let player, coins, enemies, walls, score, timeLeft;
 
 function setup() {
-  player = { x: ${player.x}, y: ${player.y}, speed: 200 };
+  player = { x: ${px}, y: ${py}, speed: ${pspeed}, r: ${p ? p.size / 2 : 12}, color: "${p ? p.color : '#7CFC7C'}" };
   coins = [${coins.join(', ')}];
   enemies = [${enemies.join(', ')}];
   walls = [${walls.join(', ')}];
@@ -216,28 +302,35 @@ function update(dt) {
     player.x += (touch.x - player.x) * 0.1;
     player.y += (touch.y - player.y) * 0.1;
   }
-  player.x = Math.max(14, Math.min(W - 14, player.x));
-  player.y = Math.max(14, Math.min(H - 14, player.y));
+  player.x = Math.max(player.r, Math.min(W - player.r, player.x));
+  player.y = Math.max(player.r, Math.min(H - player.r, player.y));
   for (const e of enemies) {
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    if (e.x < 16 || e.x > W - 16) e.vx = -e.vx;
-    if (e.y < 16 || e.y > H - 16) e.vy = -e.vy;
+    if (e.x < e.r || e.x > W - e.r) e.vx = -e.vx;
+    if (e.y < e.r || e.y > H - e.r) e.vy = -e.vy;
   }
   coins = coins.filter(c => {
-    if (Math.hypot(c.x - player.x, c.y - player.y) < 24) { score += 10; sound('coin'); return false; }
+    if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + player.r) { score += 10; sound('coin'); return false; }
     return true;
   });
 }
 
 function draw(ctx) {
   for (const w of walls) {
-    ctx.fillStyle = '#7A8CA8';
-    ctx.fillRect(w.x - 20, w.y - 10, 40, 20);
+    ctx.fillStyle = w.color;
+    ctx.fillRect(w.x - w.w / 2, w.y - w.h / 2, w.w, w.h);
   }
-  for (const c of coins) sprite(ctx, 'coin', c.x, c.y);
-  for (const e of enemies) sprite(ctx, 'enemy', e.x, e.y);
-  sprite(ctx, 'player', player.x, player.y);
+  ctx.fillStyle = '#D4AF37';
+  for (const c of coins) {
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.fill();
+  }
+  for (const e of enemies) {
+    ctx.fillStyle = e.color;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = player.color;
+  ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.font = '15px sans-serif';
   ctx.fillText('النقاط: ' + score, 8, 22);
@@ -245,8 +338,6 @@ function draw(ctx) {
 }`;
   }
 
-  // تشغيل الكود على الشاشة نفسها
-  let frameCtx = null;
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
@@ -299,14 +390,12 @@ function draw(ctx) {
   });
   window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-  document.getElementById('gen').onclick = () => generateCode();
+  document.getElementById('gen').onclick = generateCode;
   document.getElementById('run').onclick = run;
   document.getElementById('stop').onclick = () => { stop(); errEl.textContent = 'متوقفة'; };
 
   document.querySelector('.kind[data-kind="coin"]').classList.add('sel');
-  redrawEditor();
-  renderList();
-  generateCode();
+  refresh();
 </script>
 </body>
 </html>
