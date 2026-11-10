@@ -67,7 +67,7 @@ const String _pyHtml = r'''
     <select id="files"></select>
   </div>
   <div class="row" style="margin-top:8px">
-    <button id="ren" class="alt">إعادة تسمية</button>
+    <button id="ren" class="alt">إعادة تسمية (نقل الكود)</button>
   </div>
   <input id="fold" placeholder="اسم المجلد الجديد (مثال: projects)" style="margin-top:8px">
   <div class="row" style="margin-top:8px">
@@ -229,19 +229,20 @@ const String _pyHtml = r'''
     msg('تم حذف: ' + name);
   }
 
+  // إعادة التسمية الحقيقية: تنقل الملف المختار مع الكود الموجود في المحرر إلى الاسم الجديد
   function renameFile() {
     const oldName = document.getElementById('files').value;
     const files = getFiles();
     if (!oldName || !(oldName in files)) { msg('اختر ملفاً من القائمة أولاً'); return; }
     const newName = cleanName(document.getElementById('fname').value);
-    if (newName === oldName) { msg('الاسم الجديد مطابق للقديم'); return; }
+    if (newName === oldName) { msg('الاسم الجديد مطابق للقديم، غيّر الاسم في الحقل أولاً'); return; }
     if (newName in files) { msg('يوجد ملف بهذا الاسم: ' + newName); return; }
-    files[newName] = files[oldName];
+    files[newName] = getCode();
     delete files[oldName];
     localStorage.setItem(KEY, JSON.stringify(files));
     document.getElementById('fname').value = newName;
     refreshList(newName);
-    msg('تمت إعادة التسمية إلى: ' + newName);
+    msg('تم النقل إلى: ' + newName);
   }
 
   function newFolder() {
