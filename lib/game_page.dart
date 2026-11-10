@@ -3,7 +3,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 const String _gameHtml = r'''
 <!DOCTYPE html>
-<html dir="ltr">
+<html dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -11,42 +11,61 @@ const String _gameHtml = r'''
   * { box-sizing: border-box; }
   body { font-family: sans-serif; margin: 0; padding: 10px; background: #0D2B52; color: #fff; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
-  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 6px; direction: rtl; text-align: right; }
+  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 6px; }
   textarea { width: 100%; height: 170px; background: #0A1F3D; color: #e6edf7; border: none;
-    border-radius: 10px; padding: 10px; font-family: monospace; font-size: 14px; direction: ltr; }
+    border-radius: 10px; padding: 10px; font-family: monospace; font-size: 13px; direction: ltr; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
-  button { padding: 12px; font-size: 15px; border: none; border-radius: 10px;
+  button { padding: 10px; font-size: 14px; border: none; border-radius: 10px;
     background: #D4AF37; color: #0D2B52; font-weight: bold; }
   button.alt { background: #2A4A7A; color: #fff; }
   button.danger { background: #8B2A2A; color: #fff; }
+  button.sel { outline: 2px solid #fff; }
   #wrap { width: 100%; }
   canvas { width: 100%; height: auto; background: #0A1F3D; border-radius: 10px; display: block; touch-action: none; }
+  .list { margin-top: 8px; max-height: 120px; overflow-y: auto; }
+  .item { display: flex; justify-content: space-between; align-items: center;
+    background: #0A1F3D; border-radius: 8px; padding: 6px 10px; margin-bottom: 4px; font-size: 13px; }
   .msg { color: #ff6b6b; font-size: 13px; margin-top: 6px; min-height: 16px; direction: ltr; text-align: left; }
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="title">كود اللعبة (JavaScript): دوال setup و update و draw</div>
+  <div class="title">الشاشة: اختر كائناً ثم انقر على الشاشة لإضافته</div>
+  <div class="row">
+    <button class="alt kind" data-kind="player">لاعب</button>
+    <button class="alt kind" data-kind="coin">عملة</button>
+    <button class="alt kind" data-kind="enemy">عدو</button>
+    <button class="alt kind" data-kind="wall">حاجز</button>
+  </div>
+  <div id="wrap" style="margin-top:8px"><canvas id="cv" width="360" height="480"></canvas></div>
+  <div id="list" class="list"></div>
+</div>
+<div class="card">
+  <div class="title">كود اللعبة (يتولّد تلقائياً من الشاشة، ويمكن تعديله)</div>
   <textarea id="code"></textarea>
   <div class="row">
+    <button id="gen">توليد من الشاشة</button>
     <button id="run">تشغيل</button>
     <button id="stop" class="danger">إيقاف</button>
-    <button id="sample" class="alt">نموذج</button>
   </div>
   <div id="err" class="msg"></div>
 </div>
-<div class="card">
-  <div class="title">الشاشة (حرّك اللاعب بالأسهم أو بلمس الشاشة)</div>
-  <div id="wrap"><canvas id="cv" width="360" height="480"></canvas></div>
-</div>
 <script>
   const cv = document.getElementById('cv');
+  const ctx2d = cv.getContext('2d');
   const codeEl = document.getElementById('code');
   const errEl = document.getElementById('err');
+  const listEl = document.getElementById('list');
   const keys = {};
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
+  let kind = 'coin';
+  let objects = [];
+
+  const COLORS = { player: '#7CFC7C', coin: '#D4AF37', enemy: '#FF6B6B', wall: '#7A8CA8' };
+  const SIZES = { player: 24, coin: 20, enemy: 28, wall: 40 };
+  const LABELS = { player: 'لاعب', coin: 'عملة', enemy: 'عدو', wall: 'حاجز' };
 
   // ===== الأصول المدمجة =====
   const sprites = {};
@@ -98,61 +117,96 @@ const String _gameHtml = r'''
     win: () => { beep(523, 0.1, 'triangle'); setTimeout(() => beep(784, 0.2, 'triangle'), 110); },
     over: () => { beep(330, 0.2, 'sawtooth'); setTimeout(() => beep(220, 0.4, 'sawtooth'), 200); }
   };
-
-  // أداة مساعدة للكود: رسم صورة أو تشغيل صوت باسمه
-  function sprite(ctx, name, x, y) {
+  function sprite(c, name, x, y) {
     const img = sprites[name];
-    if (img) ctx.drawImage(img, x - img.width / 2, y - img.height / 2);
+    if (img) c.drawImage(img, x - img.width / 2, y - img.height / 2);
   }
-  function sound(name) {
-    if (sounds[name]) sounds[name]();
+  function sound(name) { if (sounds[name]) sounds[name](); }
+
+  // ===== المحرر المرئي =====
+  function redrawEditor() {
+    ctx2d.fillStyle = '#0A1F3D';
+    ctx2d.fillRect(0, 0, cv.width, cv.height);
+    for (const o of objects) {
+      if (o.kind === 'wall') {
+        ctx2d.fillStyle = COLORS.wall;
+        ctx2d.fillRect(o.x - 20, o.y - 10, 40, 20);
+      } else {
+        ctx2d.fillStyle = COLORS[o.kind];
+        ctx2d.beginPath();
+        ctx2d.arc(o.x, o.y, SIZES[o.kind] / 2, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+    }
   }
 
-  const SAMPLE = `let player, coins, enemies, score, lives, level, timeLeft, state;
-let best = Number(localStorage.getItem('cs_best') || 0);
-
-function startLevel() {
-  const n = 6 + level * 2;
-  coins = [];
-  enemies = [];
-  for (let i = 0; i < n; i++) {
-    coins.push({ x: 30 + Math.random() * 300, y: 30 + Math.random() * 300 });
-  }
-  for (let i = 0; i < Math.min(1 + level, 6); i++) {
-    enemies.push({
-      x: 40 + Math.random() * 280,
-      y: 60 + Math.random() * 200,
-      vx: (Math.random() < 0.5 ? -1 : 1) * (70 + level * 15),
-      vy: (Math.random() < 0.5 ? -1 : 1) * (60 + level * 15)
+  function renderList() {
+    listEl.innerHTML = '';
+    objects.forEach((o, i) => {
+      const row = document.createElement('div');
+      row.className = 'item';
+      const label = document.createElement('span');
+      label.textContent = LABELS[o.kind] + ' (' + Math.round(o.x) + ', ' + Math.round(o.y) + ')';
+      const del = document.createElement('button');
+      del.className = 'danger';
+      del.textContent = 'حذف';
+      del.onclick = () => { objects.splice(i, 1); refresh(); };
+      row.appendChild(label);
+      row.appendChild(del);
+      listEl.appendChild(row);
     });
+    if (!objects.length) listEl.textContent = 'لا توجد كائنات بعد.';
   }
-  player.x = 180; player.y = 420;
+
+  function refresh() {
+    redrawEditor();
+    renderList();
+    generateCode();
+  }
+
+  function pos(e) {
+    const r = cv.getBoundingClientRect();
+    return {
+      x: Math.round((e.clientX - r.left) * cv.width / r.width),
+      y: Math.round((e.clientY - r.top) * cv.height / r.height)
+    };
+  }
+
+  cv.addEventListener('click', e => {
+    const p = pos(e);
+    if (kind === 'player') {
+      objects = objects.filter(o => o.kind !== 'player');
+    }
+    objects.push({ kind, x: p.x, y: p.y });
+    refresh();
+  });
+
+  document.querySelectorAll('.kind').forEach(b => {
+    b.addEventListener('click', () => {
+      kind = b.dataset.kind;
+      document.querySelectorAll('.kind').forEach(x => x.classList.toggle('sel', x === b));
+    });
+  });
+
+  // توليد الكود من الكائنات المرسومة
+  function generateCode() {
+    const player = objects.find(o => o.kind === 'player') || { x: 180, y: 420 };
+    const coins = objects.filter(o => o.kind === 'coin').map(o => `{ x: ${o.x}, y: ${o.y} }`);
+    const enemies = objects.filter(o => o.kind === 'enemy').map(o => `{ x: ${o.x}, y: ${o.y}, vx: 80, vy: 60 }`);
+    const walls = objects.filter(o => o.kind === 'wall').map(o => `{ x: ${o.x}, y: ${o.y} }`);
+    codeEl.value = `let player, coins, enemies, walls, score, timeLeft;
+
+function setup() {
+  player = { x: ${player.x}, y: ${player.y}, speed: 200 };
+  coins = [${coins.join(', ')}];
+  enemies = [${enemies.join(', ')}];
+  walls = [${walls.join(', ')}];
+  score = 0;
   timeLeft = 30;
 }
 
-function setup() {
-  player = { x: 180, y: 420, speed: 220 };
-  score = 0;
-  lives = 3;
-  level = 1;
-  state = 'play';
-  startLevel();
-}
-
-function endGame() {
-  state = 'over';
-  sound('over');
-  if (score > best) {
-    best = score;
-    localStorage.setItem('cs_best', String(best));
-  }
-}
-
 function update(dt) {
-  if (state !== 'play') return;
   timeLeft -= dt;
-  if (timeLeft <= 0) { lives--; if (lives <= 0) return endGame(); startLevel(); return; }
-
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
@@ -164,85 +218,35 @@ function update(dt) {
   }
   player.x = Math.max(14, Math.min(W - 14, player.x));
   player.y = Math.max(14, Math.min(H - 14, player.y));
-
   for (const e of enemies) {
     e.x += e.vx * dt;
     e.y += e.vy * dt;
     if (e.x < 16 || e.x > W - 16) e.vx = -e.vx;
     if (e.y < 16 || e.y > H - 16) e.vy = -e.vy;
-    if (Math.hypot(e.x - player.x, e.y - player.y) < 26) {
-      lives--;
-      sound('hit');
-      player.x = 180; player.y = 420;
-      if (lives <= 0) return endGame();
-    }
   }
-
   coins = coins.filter(c => {
     if (Math.hypot(c.x - player.x, c.y - player.y) < 24) { score += 10; sound('coin'); return false; }
     return true;
   });
-
-  if (coins.length === 0) {
-    level++;
-    score += 50;
-    sound('win');
-    startLevel();
-  }
 }
 
 function draw(ctx) {
-  ctx.fillStyle = '#D4AF37';
+  for (const w of walls) {
+    ctx.fillStyle = '#7A8CA8';
+    ctx.fillRect(w.x - 20, w.y - 10, 40, 20);
+  }
   for (const c of coins) sprite(ctx, 'coin', c.x, c.y);
   for (const e of enemies) sprite(ctx, 'enemy', e.x, e.y);
   sprite(ctx, 'player', player.x, player.y);
-
   ctx.fillStyle = '#fff';
   ctx.font = '15px sans-serif';
   ctx.fillText('النقاط: ' + score, 8, 22);
-  ctx.fillText('المرحلة: ' + level, 130, 22);
   ctx.fillText('الوقت: ' + Math.ceil(timeLeft), 250, 22);
-  ctx.fillText('الحياة: ' + '♥'.repeat(Math.max(0, lives)), 8, 44);
-  ctx.fillText('أفضل: ' + best, 250, 44);
-
-  if (state === 'over') {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#D4AF37';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.fillText('انتهت اللعبة', 90, 220);
-    ctx.font = '18px sans-serif';
-    ctx.fillText('نتيجتك: ' + score, 115, 255);
-    ctx.fillText('أفضل نتيجة: ' + best, 100, 285);
-    ctx.fillText('اضغط تشغيل للعب مرة أخرى', 40, 320);
-  }
 }`;
-
-  codeEl.value = SAMPLE;
-
-  function pos(e) {
-    const r = cv.getBoundingClientRect();
-    return {
-      x: (e.clientX - r.left) * cv.width / r.width,
-      y: (e.clientY - r.top) * cv.height / r.height
-    };
   }
 
-  cv.addEventListener('pointerdown', e => {
-    touch.down = true;
-    const p = pos(e); touch.x = p.x; touch.y = p.y;
-  });
-  cv.addEventListener('pointermove', e => {
-    if (!touch.down) return;
-    const p = pos(e); touch.x = p.x; touch.y = p.y;
-  });
-  window.addEventListener('pointerup', () => { touch.down = false; });
-  window.addEventListener('keydown', e => {
-    keys[e.key] = true;
-    if (e.key.startsWith('Arrow')) e.preventDefault();
-  });
-  window.addEventListener('keyup', e => { keys[e.key] = false; });
-
+  // تشغيل الكود على الشاشة نفسها
+  let frameCtx = null;
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
@@ -255,7 +259,7 @@ function draw(ctx) {
     let g;
     try {
       const src = codeEl.value + '\n;return { setup: typeof setup === "function" ? setup : null, update: typeof update === "function" ? update : null, draw: typeof draw === "function" ? draw : null };';
-      g = new Function('ctx', 'keys', 'touch', 'W', 'H', 'sprite', 'sound', src)(ctx, keys, touch, cv.width, cv.height, (c, n, x, y) => sprite(c, n, x, y), sound);
+      g = new Function('ctx', 'keys', 'touch', 'W', 'H', 'sprite', 'sound', src)(ctx, keys, touch, cv.width, cv.height, sprite, sound);
       if (g.setup) g.setup();
     } catch (e) {
       errEl.textContent = 'خطأ في الكود: ' + e;
@@ -280,9 +284,29 @@ function draw(ctx) {
     raf = requestAnimationFrame(frame);
   }
 
-  document.getElementById('run').addEventListener('click', run);
-  document.getElementById('stop').addEventListener('click', () => { stop(); errEl.textContent = 'متوقفة'; });
-  document.getElementById('sample').addEventListener('click', () => { codeEl.value = SAMPLE; });
+  window.addEventListener('pointerup', () => { touch.down = false; });
+  cv.addEventListener('pointerdown', e => {
+    touch.down = true;
+    const p = pos(e); touch.x = p.x; touch.y = p.y;
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!touch.down) return;
+    const p = pos(e); touch.x = p.x; touch.y = p.y;
+  });
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+    if (e.key.startsWith('Arrow')) e.preventDefault();
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  document.getElementById('gen').onclick = () => generateCode();
+  document.getElementById('run').onclick = run;
+  document.getElementById('stop').onclick = () => { stop(); errEl.textContent = 'متوقفة'; };
+
+  document.querySelector('.kind[data-kind="coin"]').classList.add('sel');
+  redrawEditor();
+  renderList();
+  generateCode();
 </script>
 </body>
 </html>
