@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'game_page.dart';
 import 'home_page.dart';
 import 'python_test_page.dart';
 
@@ -55,7 +56,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['الرئيسية', 'المحرر', 'الإعدادات'];
+  static const _titles = ['الرئيسية', 'المحرر', 'الألعاب', 'الإعدادات'];
 
   void _openInEditor(String name) {
     setState(() => _index = 1);
@@ -67,6 +68,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = [
       HomePage(key: homeKey, onOpen: _openInEditor),
       PythonTestPage(key: editorKey),
+      const GamePage(),
       const _SettingsPage(),
     ];
 
@@ -91,6 +93,7 @@ class _HomeShellState extends State<HomeShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'الرئيسية'),
           NavigationDestination(icon: Icon(Icons.code), label: 'المحرر'),
+          NavigationDestination(icon: Icon(Icons.sports_esports_outlined), label: 'الألعاب'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'الإعدادات'),
         ],
       ),
