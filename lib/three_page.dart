@@ -10,11 +10,11 @@ const String _threeHtml = r'''
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; padding: 10px; background: #0D2B52; color: #fff; font-family: sans-serif; }
-  .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; }
+  .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
   .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
-  #stage { width: 100%; height: 340px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
+  #stage { width: 100%; height: 320px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
   #stage canvas { display: block; width: 100% !important; height: 100% !important; }
   button { padding: 10px; font-size: 14px; border: none; border-radius: 10px;
     background: #D4AF37; color: #0D2B52; font-weight: bold; }
@@ -22,13 +22,16 @@ const String _threeHtml = r'''
   button.danger { background: #8B2A2A; color: #fff; }
   button.sel { outline: 2px solid #fff; }
   button:disabled { opacity: 0.4; }
+  input[type=text], select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #D4AF37;
+    background: #0A1F3D; color: #fff; font-size: 14px; margin-top: 8px; }
   .prop { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
   .prop label { min-width: 52px; }
   .prop input[type=range] { flex: 1; }
   .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
-  .prop span { min-width: 36px; text-align: left; direction: ltr; }
+  .prop span { min-width: 40px; text-align: left; direction: ltr; }
   .hint { font-size: 12px; color: #cfd8e6; margin-top: 8px; }
-  .msg { color: #ff6b6b; font-size: 13px; margin-top: 6px; min-height: 16px; }
+  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; }
+  .err { color: #ff6b6b; }
 </style>
 </head>
 <body>
@@ -57,12 +60,46 @@ const String _threeHtml = r'''
     <button id="clear" class="danger">حذف الكل</button>
   </div>
   <div class="hint">انقر على شكل لتحديده. اسحبه لتحريكه، واسحب الفراغ لتدوير الكاميرا.</div>
-  <div id="err" class="msg"></div>
+</div>
+<div class="card">
+  <div class="title">حفظ المشهد</div>
+  <input type="text" id="sname" placeholder="اسم المشهد (مثال: مشهد1)">
+  <div class="row">
+    <button id="save" class="alt">حفظ المشهد</button>
+    <button id="load" class="alt">فتح المحدد</button>
+  </div>
+  <select id="scenes"></select>
+  <div class="row">
+    <button id="delscene" class="danger">حذف المشهد المحفوظ</button>
+  </div>
+  <div id="msg" class="msg"></div>
+  <div id="err" class="msg err"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
   const errEl = document.getElementById('err');
+  const msgEl = document.getElementById('msg');
+  const SKEY = 'cs_3d_scenes';
   let kind = 'box';
+
+  function getScenes() {
+    try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function setScenes(obj) {
+    localStorage.setItem(SKEY, JSON.stringify(obj));
+  }
+  function refreshScenes(selected) {
+    const sel = document.getElementById('scenes');
+    const scenes = getScenes();
+    sel.innerHTML = '';
+    Object.keys(scenes).sort().forEach(n => {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      sel.appendChild(o);
+    });
+    if (selected) sel.value = selected;
+  }
 
   if (typeof THREE === 'undefined') {
     errEl.textContent = 'تعذّر تحميل Three.js. تأكد من اتصال الإنترنت.';
@@ -110,13 +147,11 @@ const String _threeHtml = r'''
     const COLORS = [0xd4af37, 0x7cfc7c, 0xff6b6b, 0x82aaff, 0xffffff];
     let colorIdx = 0;
     let selected = null;
-    const BASE_SCALE = 1;
+    const BASE_Y = { box: 0.7, sphere: 0.7, cylinder: 0.8, floor: 0.075 };
 
-    function makeMesh(k) {
-      const mat = new THREE.MeshStandardMaterial({
-        color: COLORS[colorIdx % COLORS.length], metalness: 0.2, roughness: 0.5
-      });
-      colorIdx++;
+    function makeMesh(k, colorHex) {
+      const color = colorHex !== undefined ? colorHex : COLORS[colorIdx++ % COLORS.length];
+      const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.2, roughness: 0.5 });
       let geo;
       if (k === 'sphere') geo = new THREE.SphereGeometry(0.7, 32, 24);
       else if (k === 'cylinder') geo = new THREE.CylinderGeometry(0.6, 0.6, 1.6, 32);
@@ -124,7 +159,7 @@ const String _threeHtml = r'''
       else geo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
       const m = new THREE.Mesh(geo, mat);
       m.userData.kind = k;
-      m.userData.baseY = k === 'floor' ? 0.075 : (k === 'box' ? 0.7 : (k === 'sphere' ? 0.7 : 0.8));
+      m.userData.baseY = BASE_Y[k] || 0.7;
       return m;
     }
 
@@ -139,13 +174,11 @@ const String _threeHtml = r'''
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
     }
-
     function pickShape(clientX, clientY) {
       setNdc(clientX, clientY);
       const hits = raycaster.intersectObjects(shapes, false);
       return hits.length ? hits[0].object : null;
     }
-
     function groundAt(clientX, clientY) {
       setNdc(clientX, clientY);
       return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint.clone() : null;
@@ -169,7 +202,7 @@ const String _threeHtml = r'''
       propsEl.style.display = 'block';
       delsel.disabled = false;
       pcolor.value = hexOf(mesh.material.color);
-      const pct = Math.round((mesh.scale.x / BASE_SCALE) * 100);
+      const pct = Math.round(mesh.scale.x * 100);
       psize.value = Math.max(50, Math.min(150, pct));
       psizeOut.textContent = psize.value + '%';
     }
@@ -198,12 +231,64 @@ const String _threeHtml = r'''
       removeMesh(selected);
       select(null);
     };
-
     document.getElementById('clear').onclick = () => {
       shapes.slice().forEach(removeMesh);
       select(null);
     };
 
+    // ===== الحفظ والفتح =====
+    function snapshot() {
+      return shapes.map(m => ({
+        kind: m.userData.kind,
+        x: m.position.x, z: m.position.z,
+        scale: m.scale.x,
+        color: m.material.color.getHex()
+      }));
+    }
+    function build(items) {
+      shapes.slice().forEach(removeMesh);
+      select(null);
+      items.forEach(it => {
+        const m = makeMesh(it.kind, it.color);
+        m.scale.set(it.scale, it.scale, it.scale);
+        m.position.set(it.x, m.userData.baseY * it.scale, it.z);
+        scene.add(m);
+        shapes.push(m);
+      });
+    }
+
+    document.getElementById('save').onclick = () => {
+      const name = document.getElementById('sname').value.trim();
+      if (!name) { msgEl.textContent = 'اكتب اسم المشهد أولاً'; return; }
+      const scenes = getScenes();
+      scenes[name] = snapshot();
+      try {
+        setScenes(scenes);
+        refreshScenes(name);
+        msgEl.textContent = 'تم حفظ المشهد: ' + name + ' (' + shapes.length + ' شكل)';
+      } catch (e) {
+        msgEl.textContent = 'تعذّر الحفظ: ' + e;
+      }
+    };
+    document.getElementById('load').onclick = () => {
+      const name = document.getElementById('scenes').value;
+      const scenes = getScenes();
+      if (!name || !(name in scenes)) { msgEl.textContent = 'لا يوجد مشهد محدد لفتحه'; return; }
+      build(scenes[name]);
+      document.getElementById('sname').value = name;
+      msgEl.textContent = 'تم فتح المشهد: ' + name;
+    };
+    document.getElementById('delscene').onclick = () => {
+      const name = document.getElementById('scenes').value;
+      const scenes = getScenes();
+      if (!name || !(name in scenes)) { msgEl.textContent = 'لا يوجد مشهد محدد للحذف'; return; }
+      delete scenes[name];
+      setScenes(scenes);
+      refreshScenes();
+      msgEl.textContent = 'تم حذف المشهد: ' + name;
+    };
+
+    // ===== الاختيار والسحب =====
     let drag = null;
     renderer.domElement.addEventListener('pointerdown', e => {
       const hit = pickShape(e.clientX, e.clientY);
@@ -268,6 +353,7 @@ const String _threeHtml = r'''
       requestAnimationFrame(tick);
     }
     tick();
+    refreshScenes();
   }
 </script>
 </body>
