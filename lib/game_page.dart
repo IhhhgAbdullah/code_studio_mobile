@@ -38,7 +38,7 @@ const String _gameHtml = r'''
 </head>
 <body>
 <div class="card">
-  <div class="title">الشاشة: اختر كائناً ثم انقر على الشاشة لإضافته</div>
+  <div class="title">الشاشة: اختر كائناً ثم انقر لإضافته، أو اسحب كائناً موجوداً لتحريكه</div>
   <div class="row">
     <button class="alt kind" data-kind="player">لاعب</button>
     <button class="alt kind" data-kind="coin">عملة</button>
@@ -72,6 +72,7 @@ const String _gameHtml = r'''
   let kind = 'coin';
   let objects = [];
   let selected = -1;
+  let drag = null;
 
   const DEFAULTS = {
     player: { color: '#7CFC7C', size: 24, speed: 200 },
@@ -183,7 +184,6 @@ const String _gameHtml = r'''
     if (!objects.length) listEl.textContent = 'لا توجد كائنات بعد.';
   }
 
-  // لوحة الخصائص للكائن المختار
   function renderProps() {
     const o = objects[selected];
     if (!o) { propsEl.style.display = 'none'; propsEl.innerHTML = ''; return; }
@@ -253,14 +253,62 @@ const String _gameHtml = r'''
     };
   }
 
-  cv.addEventListener('click', e => {
+  // أقرب كائن تحت النقطة (من الأعلى للأسفل)
+  function hitTest(x, y) {
+    for (let i = objects.length - 1; i >= 0; i--) {
+      const o = objects[i];
+      const half = o.size / 2 + 8;
+      if (Math.abs(x - o.x) <= half && Math.abs(y - o.y) <= half) return i;
+    }
+    return -1;
+  }
+
+  cv.addEventListener('pointerdown', e => {
     const p = pos(e);
+    const hit = hitTest(p.x, p.y);
+    if (hit >= 0) {
+      selected = hit;
+      drag = { index: hit, moved: false };
+      refresh();
+    } else {
+      drag = null;
+      touch.down = true;
+      touch.x = p.x; touch.y = p.y;
+    }
+  });
+
+  cv.addEventListener('pointermove', e => {
+    const p = pos(e);
+    if (drag) {
+      const o = objects[drag.index];
+      o.x = Math.max(0, Math.min(cv.width, p.x));
+      o.y = Math.max(0, Math.min(cv.height, p.y));
+      drag.moved = true;
+      redrawEditor();
+      return;
+    }
+    if (touch.down) { touch.x = p.x; touch.y = p.y; }
+  });
+
+  cv.addEventListener('pointerup', e => {
+    const p = pos(e);
+    if (drag) {
+      if (!drag.moved) {
+        // ضغطة بدون سحب: تحديد فقط
+      }
+      drag = null;
+      refresh();
+      return;
+    }
+    touch.down = false;
     if (kind === 'player') objects = objects.filter(o => o.kind !== 'player');
     const d = DEFAULTS[kind];
     objects.push({ kind, x: p.x, y: p.y, color: d.color, size: d.size, speed: d.speed });
     selected = objects.length - 1;
     refresh();
   });
+
+  cv.addEventListener('pointercancel', () => { drag = null; touch.down = false; });
 
   document.querySelectorAll('.kind').forEach(b => {
     b.addEventListener('click', () => {
@@ -269,7 +317,6 @@ const String _gameHtml = r'''
     });
   });
 
-  // توليد الكود من الكائنات وخصائصها
   function generateCode() {
     const p = objects.find(o => o.kind === 'player');
     const px = p ? p.x : 180, py = p ? p.y : 420;
@@ -375,15 +422,6 @@ function draw(ctx) {
     raf = requestAnimationFrame(frame);
   }
 
-  window.addEventListener('pointerup', () => { touch.down = false; });
-  cv.addEventListener('pointerdown', e => {
-    touch.down = true;
-    const p = pos(e); touch.x = p.x; touch.y = p.y;
-  });
-  cv.addEventListener('pointermove', e => {
-    if (!touch.down) return;
-    const p = pos(e); touch.x = p.x; touch.y = p.y;
-  });
   window.addEventListener('keydown', e => {
     keys[e.key] = true;
     if (e.key.startsWith('Arrow')) e.preventDefault();
