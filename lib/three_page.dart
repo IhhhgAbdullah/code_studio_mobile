@@ -14,13 +14,19 @@ const String _threeHtml = r'''
   .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
-  #stage { width: 100%; height: 360px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
+  #stage { width: 100%; height: 340px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
   #stage canvas { display: block; width: 100% !important; height: 100% !important; }
   button { padding: 10px; font-size: 14px; border: none; border-radius: 10px;
     background: #D4AF37; color: #0D2B52; font-weight: bold; }
   button.alt { background: #2A4A7A; color: #fff; }
   button.danger { background: #8B2A2A; color: #fff; }
   button.sel { outline: 2px solid #fff; }
+  button:disabled { opacity: 0.4; }
+  .prop { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
+  .prop label { min-width: 52px; }
+  .prop input[type=range] { flex: 1; }
+  .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
+  .prop span { min-width: 36px; text-align: left; direction: ltr; }
   .hint { font-size: 12px; color: #cfd8e6; margin-top: 8px; }
   .msg { color: #ff6b6b; font-size: 13px; margin-top: 6px; min-height: 16px; }
 </style>
@@ -35,10 +41,22 @@ const String _threeHtml = r'''
     <button class="alt kind" data-kind="floor">أرضية</button>
   </div>
   <div id="stage" style="margin-top:8px"></div>
+  <div id="props" style="display:none">
+    <div class="prop">
+      <label>اللون</label>
+      <input type="color" id="pcolor">
+    </div>
+    <div class="prop">
+      <label>الحجم</label>
+      <input type="range" id="psize" min="50" max="150" step="5" value="100">
+      <span id="psizeOut">100%</span>
+    </div>
+  </div>
   <div class="row">
+    <button id="delsel" class="danger" disabled>حذف المحدد</button>
     <button id="clear" class="danger">حذف الكل</button>
   </div>
-  <div class="hint">سحب بإصبع واحد لتدوير الكاميرا.</div>
+  <div class="hint">انقر على شكل لتحديده. اسحبه لتحريكه، واسحب الفراغ لتدوير الكاميرا.</div>
   <div id="err" class="msg"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -81,7 +99,6 @@ const String _threeHtml = r'''
     sun.position.set(6, 10, 8);
     scene.add(sun);
 
-    // أرضية الأساس (ثابتة، مرئية دائماً)
     const base = new THREE.Mesh(
       new THREE.CircleGeometry(12, 64),
       new THREE.MeshStandardMaterial({ color: 0x1a3d6e })
@@ -92,6 +109,8 @@ const String _threeHtml = r'''
     const shapes = [];
     const COLORS = [0xd4af37, 0x7cfc7c, 0xff6b6b, 0x82aaff, 0xffffff];
     let colorIdx = 0;
+    let selected = null;
+    const BASE_SCALE = 1;
 
     function makeMesh(k) {
       const mat = new THREE.MeshStandardMaterial({
@@ -103,55 +122,132 @@ const String _threeHtml = r'''
       else if (k === 'cylinder') geo = new THREE.CylinderGeometry(0.6, 0.6, 1.6, 32);
       else if (k === 'floor') geo = new THREE.BoxGeometry(2.4, 0.15, 2.4);
       else geo = new THREE.BoxGeometry(1.4, 1.4, 1.4);
-      return new THREE.Mesh(geo, mat);
+      const m = new THREE.Mesh(geo, mat);
+      m.userData.kind = k;
+      m.userData.baseY = k === 'floor' ? 0.075 : (k === 'box' ? 0.7 : (k === 'sphere' ? 0.7 : 0.8));
+      return m;
     }
 
-    // الأرضية الحقيقية تُضاف كطبقة بسيطة فوق الأساس
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
     const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hitPoint = new THREE.Vector3();
 
-    function addAt(clientX, clientY) {
+    function setNdc(clientX, clientY) {
       const rect = renderer.domElement.getBoundingClientRect();
       ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return;
-      const m = makeMesh(kind);
-      const lift = kind === 'floor' ? 0.075 : (kind === 'sphere' ? 0.7 : (kind === 'cylinder' ? 0.8 : 0.7));
-      m.position.set(Math.round(hitPoint.x * 2) / 2, lift, Math.round(hitPoint.z * 2) / 2);
-      scene.add(m);
-      shapes.push(m);
     }
 
-    // تدوير الكاميرا بسحب إصبع واحد، والنقر القصير يضيف شكلاً
+    function pickShape(clientX, clientY) {
+      setNdc(clientX, clientY);
+      const hits = raycaster.intersectObjects(shapes, false);
+      return hits.length ? hits[0].object : null;
+    }
+
+    function groundAt(clientX, clientY) {
+      setNdc(clientX, clientY);
+      return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint.clone() : null;
+    }
+
+    const propsEl = document.getElementById('props');
+    const pcolor = document.getElementById('pcolor');
+    const psize = document.getElementById('psize');
+    const psizeOut = document.getElementById('psizeOut');
+    const delsel = document.getElementById('delsel');
+
+    function hexOf(color) { return '#' + color.getHexString(); }
+
+    function select(mesh) {
+      selected = mesh;
+      if (!mesh) {
+        propsEl.style.display = 'none';
+        delsel.disabled = true;
+        return;
+      }
+      propsEl.style.display = 'block';
+      delsel.disabled = false;
+      pcolor.value = hexOf(mesh.material.color);
+      const pct = Math.round((mesh.scale.x / BASE_SCALE) * 100);
+      psize.value = Math.max(50, Math.min(150, pct));
+      psizeOut.textContent = psize.value + '%';
+    }
+
+    pcolor.addEventListener('input', () => {
+      if (selected) selected.material.color.set(pcolor.value);
+    });
+    psize.addEventListener('input', () => {
+      if (!selected) return;
+      const s = Number(psize.value) / 100;
+      selected.scale.set(s, s, s);
+      selected.position.y = selected.userData.baseY * s;
+      psizeOut.textContent = psize.value + '%';
+    });
+
+    function removeMesh(m) {
+      scene.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
+      const i = shapes.indexOf(m);
+      if (i >= 0) shapes.splice(i, 1);
+    }
+
+    delsel.onclick = () => {
+      if (!selected) return;
+      removeMesh(selected);
+      select(null);
+    };
+
+    document.getElementById('clear').onclick = () => {
+      shapes.slice().forEach(removeMesh);
+      select(null);
+    };
+
     let drag = null;
     renderer.domElement.addEventListener('pointerdown', e => {
-      drag = { x: e.clientX, y: e.clientY, moved: false, sx: e.clientX, sy: e.clientY };
+      const hit = pickShape(e.clientX, e.clientY);
+      drag = {
+        x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY,
+        moved: false, mode: hit ? 'shape' : 'camera', mesh: hit
+      };
+      if (hit) select(hit);
     });
     renderer.domElement.addEventListener('pointermove', e => {
       if (!drag) return;
-      const dx = e.clientX - drag.x;
-      const dy = e.clientY - drag.y;
-      if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 8) drag.moved = true;
-      if (drag.moved) {
-        camTheta -= dx * 0.008;
-        camPhi -= dy * 0.006;
-        updateCamera();
+      const moveDist = Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy);
+      if (moveDist > 8) drag.moved = true;
+      if (drag.mode === 'camera') {
+        if (drag.moved) {
+          camTheta -= (e.clientX - drag.x) * 0.008;
+          camPhi -= (e.clientY - drag.y) * 0.006;
+          updateCamera();
+        }
+      } else if (drag.mode === 'shape' && drag.moved) {
+        const g = groundAt(e.clientX, e.clientY);
+        if (g) {
+          const s = drag.mesh.scale.x;
+          drag.mesh.position.x = Math.round(g.x * 2) / 2;
+          drag.mesh.position.z = Math.round(g.z * 2) / 2;
+          drag.mesh.position.y = drag.mesh.userData.baseY * s;
+        }
       }
       drag.x = e.clientX; drag.y = e.clientY;
     });
     renderer.domElement.addEventListener('pointerup', e => {
-      if (drag && !drag.moved) addAt(e.clientX, e.clientY);
+      if (drag && drag.mode === 'camera' && !drag.moved) {
+        const g = groundAt(e.clientX, e.clientY);
+        if (g) {
+          const m = makeMesh(kind);
+          m.position.set(Math.round(g.x * 2) / 2, m.userData.baseY, Math.round(g.z * 2) / 2);
+          scene.add(m);
+          shapes.push(m);
+          select(m);
+        }
+      }
       drag = null;
     });
     renderer.domElement.addEventListener('pointercancel', () => { drag = null; });
-
-    document.getElementById('clear').onclick = () => {
-      shapes.forEach(s => { scene.remove(s); s.geometry.dispose(); s.material.dispose(); });
-      shapes.length = 0;
-    };
 
     document.querySelectorAll('.kind').forEach(b => {
       b.addEventListener('click', () => {
