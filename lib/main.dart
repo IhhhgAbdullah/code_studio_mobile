@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'game_page.dart';
 import 'home_page.dart';
+import 'match3_page.dart';
 import 'python_test_page.dart';
+import 'three_page.dart';
 
 final ValueNotifier<Locale> localeNotifier = ValueNotifier(const Locale('ar'));
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -56,7 +58,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  static const _titles = ['الرئيسية', 'المحرر', 'الألعاب', 'الإعدادات'];
+  static const _titles = ['الرئيسية', 'المحرر', 'الألعاب', 'Match-3', '3D', 'الإعدادات'];
 
   void _openInEditor(String name) {
     setState(() => _index = 1);
@@ -69,6 +71,8 @@ class _HomeShellState extends State<HomeShell> {
       HomePage(key: homeKey, onOpen: _openInEditor),
       PythonTestPage(key: editorKey),
       const GamePage(),
+      const Match3Page(),
+      const ThreePage(),
       const _SettingsPage(),
     ];
 
@@ -86,6 +90,7 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (i) {
           setState(() => _index = i);
           if (i == 0) homeKey.currentState?.reload();
@@ -94,6 +99,8 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'الرئيسية'),
           NavigationDestination(icon: Icon(Icons.code), label: 'المحرر'),
           NavigationDestination(icon: Icon(Icons.sports_esports_outlined), label: 'الألعاب'),
+          NavigationDestination(icon: Icon(Icons.grid_on_outlined), label: 'Match-3'),
+          NavigationDestination(icon: Icon(Icons.view_in_ar_outlined), label: '3D'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'الإعدادات'),
         ],
       ),
