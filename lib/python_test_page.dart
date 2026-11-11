@@ -8,14 +8,10 @@ const String _pyHtml = r'''
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: sans-serif; margin: 0; padding: 12px; background: #0D2B52; color: #fff; }
-  .card {
-    background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px;
-    padding: 12px; margin-bottom: 12px;
-  }
+  .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 12px; margin-bottom: 12px; }
   .card-title { color: #D4AF37; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
   input, select, textarea {
     width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 10px;
@@ -100,8 +96,12 @@ const String _pyHtml = r'''
   const FKEY = 'cs_folders';
   const KEYWORDS = ['False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield','match','case'];
   const BUILTINS = ['print','len','range','int','str','float','list','dict','set','tuple','sum','min','max','abs','sorted','enumerate','zip','map','filter','open','type','isinstance','input'];
-  const PAIRS = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'" };
-  const CLOSERS = [')', ']', '}', '"', "'"];
+  const PAIRS = { '(': ')', '[': ']', '{': '}' };
+  const CLOSERS = [')', ']', '}'];
+
+  // مسارات Pyodide: أولاً من ملفات التطبيق، ثم الإنترنت كاحتياط
+  const LOCAL_BASE = 'file:///android_asset/flutter_assets/assets/pyodide/';
+  const CDN_BASE = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/';
 
   function esc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -187,7 +187,6 @@ const String _pyHtml = r'''
       if (inside.length) {
         inside.forEach(n => g.appendChild(opt(n, n.slice(f.length + 1))));
       } else {
-        // مجلد فارغ: قيمته "folder:" ليكون قابلاً للاختيار والحذف
         g.appendChild(opt('folder:' + f, '(مجلد فارغ، اضغط حذف لإزالته)'));
       }
       sel.appendChild(g);
@@ -234,8 +233,6 @@ const String _pyHtml = r'''
   function deleteFile() {
     const sel = document.getElementById('files').value;
     const files = getFiles();
-
-    // حذف مجلد فارغ
     if (sel.startsWith('folder:')) {
       const f = sel.slice('folder:'.length);
       const list = getFolders().filter(x => x !== f);
@@ -244,7 +241,6 @@ const String _pyHtml = r'''
       msg('تم حذف المجلد: ' + f + '/');
       return;
     }
-
     if (!sel || !(sel in files)) { msg('لا يوجد ملف محدد للحذف'); return; }
     delete files[sel];
     localStorage.setItem(KEY, JSON.stringify(files));
@@ -281,8 +277,7 @@ const String _pyHtml = r'''
   function exportAll() {
     const data = { app: 'code_studio_mobile', version: 1,
       folders: getFolders(), files: getFiles() };
-    const text = JSON.stringify(data, null, 2);
-    document.getElementById('xdata').value = text;
+    document.getElementById('xdata').value = JSON.stringify(data, null, 2);
     msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
 
@@ -467,20 +462,45 @@ const String _pyHtml = r'''
     tlog('... ' + line);
   }
 
-  async function init() {
-    if (typeof loadPyodide !== 'function') {
-      throw new Error('ملف Pyodide لم يُحمَّل. تأكد من اتصال الإنترنت.');
-    }
-    pyodide = await loadPyodide({
-      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/'
+  // تحميل Pyodide: محلياً أولاً، ثم من الإنترنت إذا فشل
+  async function loadEngine(base) {
+    if (typeof loadPyodide !== 'function') throw new Error('ملف Pyodide غير موجود');
+    return await loadPyodide({ indexURL: base });
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('تعذّر تحميل: ' + src));
+      document.head.appendChild(s);
     });
+  }
+
+  async function init() {
+    let base = LOCAL_BASE;
+    let source = 'من ملفات التطبيق';
+    try {
+      await loadScript(LOCAL_BASE + 'pyodide.js');
+      pyodide = await loadEngine(LOCAL_BASE);
+    } catch (localErr) {
+      try {
+        base = CDN_BASE;
+        source = 'من الإنترنت (احتياط)';
+        await loadScript(CDN_BASE + 'pyodide.js');
+        pyodide = await loadEngine(CDN_BASE);
+      } catch (cdnErr) {
+        throw new Error('فشل تحميل Python محلياً وعبر الإنترنت: ' + cdnErr.message);
+      }
+    }
     pyodide.setStdout({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     pyodide.setStderr({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     const btn = document.getElementById('run');
     btn.disabled = false;
     btn.textContent = 'تشغيل';
     btn.onclick = runCode;
-    document.getElementById('out').textContent = 'Python جاهز';
+    document.getElementById('out').textContent = 'Python جاهز (' + source + ')';
     document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
