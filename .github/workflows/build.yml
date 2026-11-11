@@ -23,6 +23,16 @@ jobs:
       - name: Generate Android platform files
         run: flutter create . --platforms=android --project-name code_studio_mobile
 
+      - name: Download offline runtimes
+        run: |
+          mkdir -p assets/pyodide assets/three
+          PY=https://cdn.jsdelivr.net/pyodide/v0.25.1/full
+          for f in pyodide.js pyodide.asm.js pyodide.asm.wasm python_stdlib.zip pyodide-lock.json; do
+            curl -fsSL "$PY/$f" -o "assets/pyodide/$f"
+          done
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js -o assets/three/three.min.js
+          du -sh assets/pyodide assets/three
+
       - name: Generate app icon
         run: |
           sudo apt-get update
@@ -65,7 +75,6 @@ jobs:
           s = open(p, encoding='utf-8').read()
           perm = '    <uses-permission android:name="android.permission.INTERNET"/>\n'
           if 'android.permission.INTERNET' not in s:
-              s = s.replace('<manifest', '<manifest', 1)
               i = s.index('>', s.index('<manifest')) + 1
               s = s[:i] + '\n' + perm + s[i:]
           open(p, 'w', encoding='utf-8').write(s)
