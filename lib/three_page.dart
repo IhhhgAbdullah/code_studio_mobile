@@ -75,12 +75,27 @@ const String _threeHtml = r'''
   <div id="msg" class="msg"></div>
   <div id="err" class="msg err"></div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
   const errEl = document.getElementById('err');
   const msgEl = document.getElementById('msg');
   const SKEY = 'cs_3d_scenes';
   let kind = 'box';
+
+  // مصادر Three.js: محلياً أولاً، ثم cdnjs كاحتياط
+  const SOURCES = [
+    'file:///android_asset/flutter_assets/assets/three/three.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
+  ];
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => resolve(src);
+      s.onerror = () => reject(new Error(src));
+      document.head.appendChild(s);
+    });
+  }
 
   function getScenes() {
     try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); }
@@ -101,9 +116,7 @@ const String _threeHtml = r'''
     if (selected) sel.value = selected;
   }
 
-  if (typeof THREE === 'undefined') {
-    errEl.textContent = 'تعذّر تحميل Three.js. تأكد من اتصال الإنترنت.';
-  } else {
+  function startScene(sourceLabel) {
     const stage = document.getElementById('stage');
     const W = () => stage.clientWidth;
     const H = () => stage.clientHeight;
@@ -236,7 +249,6 @@ const String _threeHtml = r'''
       select(null);
     };
 
-    // ===== الحفظ والفتح =====
     function snapshot() {
       return shapes.map(m => ({
         kind: m.userData.kind,
@@ -288,7 +300,6 @@ const String _threeHtml = r'''
       msgEl.textContent = 'تم حذف المشهد: ' + name;
     };
 
-    // ===== الاختيار والسحب =====
     let drag = null;
     renderer.domElement.addEventListener('pointerdown', e => {
       const hit = pickShape(e.clientX, e.clientY);
@@ -354,7 +365,25 @@ const String _threeHtml = r'''
     }
     tick();
     refreshScenes();
+    msgEl.textContent = 'المحرك جاهز (' + sourceLabel + ')';
   }
+
+  // تحميل Three.js: محلياً أولاً، ثم cdnjs كاحتياط
+  (async function init() {
+    let loaded = null;
+    for (const src of SOURCES) {
+      try {
+        await loadScript(src);
+        if (typeof THREE !== 'undefined') { loaded = src; break; }
+      } catch (e) { /* جرّب المصدر التالي */ }
+    }
+    if (!loaded) {
+      errEl.textContent = 'تعذّر تحميل Three.js محلياً وعبر الإنترنت.';
+      return;
+    }
+    const label = loaded.startsWith('file://') ? 'من ملفات التطبيق' : 'من الإنترنت (احتياط)';
+    startScene(label);
+  })();
 </script>
 </body>
 </html>
