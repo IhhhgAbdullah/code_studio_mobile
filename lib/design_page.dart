@@ -12,8 +12,9 @@ const String _designHtml = r'''
   body { margin: 0; padding: 10px; background: #0D2B52; color: #fff; font-family: sans-serif; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
   .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; }
-  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .palette { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .tpl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
   button { padding: 10px 4px; font-size: 13px; border: none; border-radius: 10px;
     background: #2A4A7A; color: #fff; font-weight: bold; }
   button.danger { background: #8B2A2A; }
@@ -45,9 +46,22 @@ const String _designHtml = r'''
   <div class="modes">
     <button class="gold mode" data-mode="app">شاشات التطبيق</button>
     <button class="mode" data-mode="game">واجهة اللعبة</button>
+    <button class="mode" data-mode="wizard">معالج القوالب</button>
   </div>
 </div>
-<div class="card">
+
+<div class="card" id="wizardCard" style="display:none">
+  <div class="title">اختر نوع التطبيق، ثم اختر الشاشة التي تريد توليدها</div>
+  <div class="tpl" id="tplList"></div>
+  <div class="title" style="margin-top:10px" id="scrTitle">الشاشات</div>
+  <div class="tpl" id="scrList"></div>
+  <div class="row">
+    <button id="genScreen" class="gold">توليد هذه الشاشة في المصمم</button>
+  </div>
+  <div class="msg" id="wmsg"></div>
+</div>
+
+<div class="card" id="paletteCard">
   <div class="title" id="paletteTitle">لوحة العناصر: اختر عنصراً ثم انقر على الشاشة لإضافته</div>
   <div class="palette" id="palette"></div>
 </div>
@@ -108,20 +122,78 @@ const String _designHtml = r'''
   const codeEl = document.getElementById('code');
   const paletteEl = document.getElementById('palette');
   const paletteTitle = document.getElementById('paletteTitle');
+  const paletteCard = document.getElementById('paletteCard');
+  const wizardCard = document.getElementById('wizardCard');
 
-  // عناصر وضع التطبيق
   const APP_KINDS = {
     button: { label: 'زر', w: 140, h: 44, text: 'زر', color: '#D4AF37', fg: '#0D2B52' },
     text:   { label: 'نص', w: 150, h: 30, text: 'نص', color: 'transparent', fg: '#ffffff' },
     input:  { label: 'مربع إدخال', w: 180, h: 40, text: 'اكتب هنا', color: '#132F5A', fg: '#cfd8e6' },
     image:  { label: 'صورة', w: 120, h: 120, text: '', color: '#2A4A7A', fg: '#ffffff' }
   };
-  // عناصر وضع اللعبة
   const GAME_KINDS = {
     startBtn: { label: 'زر بدء', w: 140, h: 44, text: 'ابدأ', color: '#D4AF37', fg: '#0D2B52' },
     score:    { label: 'نقاط', w: 120, h: 30, text: 'النقاط: 0', color: 'transparent', fg: '#ffffff' },
     title:    { label: 'عنوان', w: 200, h: 50, text: 'اسم اللعبة', color: 'transparent', fg: '#D4AF37' },
     resetBtn: { label: 'زر إعادة', w: 140, h: 44, text: 'إعادة', color: '#2A4A7A', fg: '#ffffff' }
+  };
+
+  // قوالب المعالج: كل قالب له شاشات، وكل شاشة لها عناصر جاهزة
+  const TEMPLATES = {
+    shop: { label: 'متجر', screens: {
+      'الرئيسية': [
+        { kind: 'text', x: 20, y: 30, text: 'متجري' },
+        { kind: 'input', x: 30, y: 80, text: 'ابحث عن منتج' },
+        { kind: 'button', x: 50, y: 360, text: 'السلة' }
+      ],
+      'المنتج': [
+        { kind: 'image', x: 60, y: 30 },
+        { kind: 'text', x: 20, y: 170, text: 'اسم المنتج' },
+        { kind: 'button', x: 50, y: 360, text: 'أضف للسلة' }
+      ],
+      'السلة': [
+        { kind: 'text', x: 20, y: 30, text: 'سلة المشتريات' },
+        { kind: 'text', x: 20, y: 80, text: 'المجموع: 0' },
+        { kind: 'button', x: 50, y: 360, text: 'إتمام الشراء' }
+      ]
+    }},
+    staff: { label: 'إدارة موظفين', screens: {
+      'الرئيسية': [
+        { kind: 'text', x: 20, y: 30, text: 'الموظفون' },
+        { kind: 'input', x: 30, y: 80, text: 'بحث بالاسم' },
+        { kind: 'button', x: 50, y: 360, text: 'إضافة موظف' }
+      ],
+      'تفاصيل الموظف': [
+        { kind: 'text', x: 20, y: 30, text: 'اسم الموظف' },
+        { kind: 'input', x: 30, y: 80, text: 'القسم' },
+        { kind: 'button', x: 50, y: 360, text: 'حفظ' }
+      ]
+    }},
+    chat: { label: 'محادثة', screens: {
+      'قائمة المحادثات': [
+        { kind: 'text', x: 20, y: 30, text: 'المحادثات' },
+        { kind: 'button', x: 50, y: 360, text: 'محادثة جديدة' }
+      ],
+      'المحادثة': [
+        { kind: 'text', x: 20, y: 30, text: 'اسم المستخدم' },
+        { kind: 'input', x: 20, y: 360, text: 'اكتب رسالة' },
+        { kind: 'button', x: 180, y: 360, text: 'إرسال' }
+      ]
+    }},
+    todo: { label: 'قائمة مهام', screens: {
+      'المهام': [
+        { kind: 'text', x: 20, y: 30, text: 'مهامي' },
+        { kind: 'input', x: 30, y: 80, text: 'أضف مهمة' },
+        { kind: 'button', x: 50, y: 360, text: 'إضافة' }
+      ]
+    }},
+    service: { label: 'تطبيق خدمي', screens: {
+      'الرئيسية': [
+        { kind: 'text', x: 20, y: 30, text: 'خدماتنا' },
+        { kind: 'button', x: 50, y: 120, text: 'طلب خدمة' },
+        { kind: 'button', x: 50, y: 180, text: 'متابعة الطلب' }
+      ]
+    }}
   };
 
   let mode = 'app';
@@ -130,34 +202,32 @@ const String _designHtml = r'''
   let items = [];
   let selected = -1;
   let drag = null;
-
-  function kindsFor(m) { return m === 'game' ? GAME_KINDS : APP_KINDS; }
-
-  function buildPalette() {
-    paletteEl.innerHTML = '';
-    const names = Object.keys(kinds);
-    if (!names.includes(kind)) kind = names[0];
-    names.forEach(k => {
-      const b = document.createElement('button');
-      b.className = 'kind' + (k === kind ? ' gold' : '');
-      b.textContent = kinds[k].label;
-      b.onclick = () => {
-        kind = k;
-        buildPalette();
-      };
-      paletteEl.appendChild(b);
-    });
-  }
+  let tplKey = null;
+  let scrKey = null;
 
   function setMode(m) {
     mode = m;
-    kinds = kindsFor(m);
-    kind = Object.keys(kinds)[0];
     document.querySelectorAll('.mode').forEach(b => b.classList.toggle('gold', b.dataset.mode === m));
+    wizardCard.style.display = m === 'wizard' ? 'block' : 'none';
+    paletteCard.style.display = m === 'wizard' ? 'none' : 'block';
+    if (m === 'wizard') { renderTemplates(); return; }
+    kinds = m === 'game' ? GAME_KINDS : APP_KINDS;
+    kind = Object.keys(kinds)[0];
     paletteTitle.textContent = m === 'game'
       ? 'عناصر اللعبة: اختر عنصراً ثم انقر على الشاشة لإضافته'
       : 'لوحة العناصر: اختر عنصراً ثم انقر على الشاشة لإضافته';
     buildPalette();
+  }
+
+  function buildPalette() {
+    paletteEl.innerHTML = '';
+    Object.keys(kinds).forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'kind' + (k === kind ? ' gold' : '');
+      b.textContent = kinds[k].label;
+      b.onclick = () => { kind = k; buildPalette(); };
+      paletteEl.appendChild(b);
+    });
   }
 
   function render() {
@@ -192,7 +262,7 @@ const String _designHtml = r'''
     textRow.style.display = it.kind === 'image' ? 'none' : 'flex';
     ptext.value = it.text;
     pcolor.value = it.color.startsWith('#') ? it.color : '#132F5A';
-    const base = kindsFor(it.mode)[it.kind];
+    const base = (it.mode === 'game' ? GAME_KINDS : APP_KINDS)[it.kind];
     const pct = Math.round(it.w / base.w * 100);
     psize.value = Math.max(40, Math.min(200, pct));
     psizeOut.textContent = psize.value + '%';
@@ -249,7 +319,7 @@ const String _designHtml = r'''
   psize.addEventListener('input', () => {
     if (selected < 0) return;
     const it = items[selected];
-    const base = kindsFor(it.mode)[it.kind];
+    const base = (it.mode === 'game' ? GAME_KINDS : APP_KINDS)[it.kind];
     const f = Number(psize.value) / 100;
     it.w = Math.round(base.w * f);
     it.h = Math.round(base.h * f);
@@ -272,6 +342,49 @@ const String _designHtml = r'''
   document.querySelectorAll('.mode').forEach(b => {
     b.addEventListener('click', () => setMode(b.dataset.mode));
   });
+
+  // ===== معالج القوالب =====
+  function renderTemplates() {
+    const tl = document.getElementById('tplList');
+    tl.innerHTML = '';
+    Object.keys(TEMPLATES).forEach(k => {
+      const b = document.createElement('button');
+      b.className = tplKey === k ? 'gold' : '';
+      b.textContent = TEMPLATES[k].label;
+      b.onclick = () => { tplKey = k; scrKey = null; renderTemplates(); };
+      tl.appendChild(b);
+    });
+    const sl = document.getElementById('scrList');
+    sl.innerHTML = '';
+    document.getElementById('scrTitle').textContent = tplKey
+      ? 'شاشات: ' + TEMPLATES[tplKey].label
+      : 'اختر نوع التطبيق أولاً';
+    if (!tplKey) return;
+    Object.keys(TEMPLATES[tplKey].screens).forEach(s => {
+      const b = document.createElement('button');
+      b.className = scrKey === s ? 'gold' : '';
+      b.textContent = s;
+      b.onclick = () => { scrKey = s; renderTemplates(); };
+      sl.appendChild(b);
+    });
+  }
+
+  document.getElementById('genScreen').onclick = () => {
+    const wm = document.getElementById('wmsg');
+    if (!tplKey || !scrKey) { wm.textContent = 'اختر النوع والشاشة أولاً'; return; }
+    const list = TEMPLATES[tplKey].screens[scrKey];
+    items = list.map(s => {
+      const d = APP_KINDS[s.kind];
+      return { mode: 'app', kind: s.kind, x: s.x, y: s.y, w: d.w, h: d.h,
+        text: s.text !== undefined ? s.text : d.text, color: d.color, fg: d.fg };
+    });
+    selected = -1;
+    mode = 'app';
+    setMode('app');
+    render();
+    msgEl.textContent = 'تم توليد شاشة ' + scrKey + ' من قالب ' + TEMPLATES[tplKey].label;
+    wm.textContent = '';
+  };
 
   // ===== الحفظ والفتح =====
   function getDesigns() {
@@ -372,7 +485,7 @@ class DesignedScreen extends StatelessWidget {
   }
   document.getElementById('export').onclick = () => {
     const appItems = items.filter(it => it.mode !== 'game');
-    if (!appItems.length) { msg('لا توجد عناصر شاشة للتصدير في وضع التطبيق'); return; }
+    if (!appItems.length) { msg('لا توجد عناصر شاشة للتصدير'); return; }
     codeEl.value = generateDart();
     msg('تم توليد الكود من عناصر شاشات التطبيق');
   };
