@@ -12,7 +12,8 @@ const String _designHtml = r'''
   body { margin: 0; padding: 10px; background: #0D2B52; color: #fff; font-family: sans-serif; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
   .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; }
-  .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .palette { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
   button { padding: 10px 4px; font-size: 13px; border: none; border-radius: 10px;
     background: #2A4A7A; color: #fff; font-weight: bold; }
   button.danger { background: #8B2A2A; }
@@ -25,8 +26,10 @@ const String _designHtml = r'''
   .el { position: absolute; display: flex; align-items: center; justify-content: center;
     border-radius: 8px; cursor: move; user-select: none; font-size: 14px; }
   .el.sel { outline: 2px solid #fff; }
+  .el .tag { position: absolute; top: -10px; right: -4px; font-size: 10px; background: #fff; color: #0D2B52;
+    border-radius: 6px; padding: 1px 5px; }
   .prop { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
-  .prop label { min-width: 52px; }
+  .prop label { min-width: 60px; }
   .prop input[type=range] { flex: 1; }
   .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
   input[type=text], select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #D4AF37;
@@ -39,13 +42,14 @@ const String _designHtml = r'''
 </head>
 <body>
 <div class="card">
-  <div class="title">لوحة العناصر: اختر عنصراً ثم انقر على الشاشة لإضافته</div>
-  <div class="palette">
-    <button class="gold kind" data-kind="button">زر</button>
-    <button class="kind" data-kind="text">نص</button>
-    <button class="kind" data-kind="input">مربع إدخال</button>
-    <button class="kind" data-kind="image">صورة</button>
+  <div class="modes">
+    <button class="gold mode" data-mode="app">شاشات التطبيق</button>
+    <button class="mode" data-mode="game">واجهة اللعبة</button>
   </div>
+</div>
+<div class="card">
+  <div class="title" id="paletteTitle">لوحة العناصر: اختر عنصراً ثم انقر على الشاشة لإضافته</div>
+  <div class="palette" id="palette"></div>
 </div>
 <div class="card">
   <div id="phone"></div>
@@ -91,6 +95,7 @@ const String _designHtml = r'''
 </div>
 <script>
   const DKEY = 'cs_designs';
+  const W = 240, H = 420;
   const phone = document.getElementById('phone');
   const propsEl = document.getElementById('props');
   const ptext = document.getElementById('ptext');
@@ -101,19 +106,59 @@ const String _designHtml = r'''
   const textRow = document.getElementById('textRow');
   const msgEl = document.getElementById('msg');
   const codeEl = document.getElementById('code');
-  const W = 240, H = 420;
+  const paletteEl = document.getElementById('palette');
+  const paletteTitle = document.getElementById('paletteTitle');
 
-  const DEFAULTS = {
-    button: { w: 140, h: 44, text: 'زر', color: '#D4AF37', fg: '#0D2B52' },
-    text:   { w: 150, h: 30, text: 'نص', color: 'transparent', fg: '#ffffff' },
-    input:  { w: 180, h: 40, text: 'اكتب هنا', color: '#132F5A', fg: '#cfd8e6' },
-    image:  { w: 120, h: 120, text: '', color: '#2A4A7A', fg: '#ffffff' }
+  // عناصر وضع التطبيق
+  const APP_KINDS = {
+    button: { label: 'زر', w: 140, h: 44, text: 'زر', color: '#D4AF37', fg: '#0D2B52' },
+    text:   { label: 'نص', w: 150, h: 30, text: 'نص', color: 'transparent', fg: '#ffffff' },
+    input:  { label: 'مربع إدخال', w: 180, h: 40, text: 'اكتب هنا', color: '#132F5A', fg: '#cfd8e6' },
+    image:  { label: 'صورة', w: 120, h: 120, text: '', color: '#2A4A7A', fg: '#ffffff' }
+  };
+  // عناصر وضع اللعبة
+  const GAME_KINDS = {
+    startBtn: { label: 'زر بدء', w: 140, h: 44, text: 'ابدأ', color: '#D4AF37', fg: '#0D2B52' },
+    score:    { label: 'نقاط', w: 120, h: 30, text: 'النقاط: 0', color: 'transparent', fg: '#ffffff' },
+    title:    { label: 'عنوان', w: 200, h: 50, text: 'اسم اللعبة', color: 'transparent', fg: '#D4AF37' },
+    resetBtn: { label: 'زر إعادة', w: 140, h: 44, text: 'إعادة', color: '#2A4A7A', fg: '#ffffff' }
   };
 
+  let mode = 'app';
+  let kinds = APP_KINDS;
   let kind = 'button';
   let items = [];
   let selected = -1;
   let drag = null;
+
+  function kindsFor(m) { return m === 'game' ? GAME_KINDS : APP_KINDS; }
+
+  function buildPalette() {
+    paletteEl.innerHTML = '';
+    const names = Object.keys(kinds);
+    if (!names.includes(kind)) kind = names[0];
+    names.forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'kind' + (k === kind ? ' gold' : '');
+      b.textContent = kinds[k].label;
+      b.onclick = () => {
+        kind = k;
+        buildPalette();
+      };
+      paletteEl.appendChild(b);
+    });
+  }
+
+  function setMode(m) {
+    mode = m;
+    kinds = kindsFor(m);
+    kind = Object.keys(kinds)[0];
+    document.querySelectorAll('.mode').forEach(b => b.classList.toggle('gold', b.dataset.mode === m));
+    paletteTitle.textContent = m === 'game'
+      ? 'عناصر اللعبة: اختر عنصراً ثم انقر على الشاشة لإضافته'
+      : 'لوحة العناصر: اختر عنصراً ثم انقر على الشاشة لإضافته';
+    buildPalette();
+  }
 
   function render() {
     phone.innerHTML = '';
@@ -128,6 +173,12 @@ const String _designHtml = r'''
       d.style.color = it.fg;
       d.textContent = it.kind === 'image' ? '\u25A3' : it.text;
       d.dataset.i = i;
+      if (it.mode === 'game') {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = GAME_KINDS[it.kind].label;
+        d.appendChild(tag);
+      }
       phone.appendChild(d);
     });
     renderProps();
@@ -141,7 +192,8 @@ const String _designHtml = r'''
     textRow.style.display = it.kind === 'image' ? 'none' : 'flex';
     ptext.value = it.text;
     pcolor.value = it.color.startsWith('#') ? it.color : '#132F5A';
-    const pct = Math.round(it.w / DEFAULTS[it.kind].w * 100);
+    const base = kindsFor(it.mode)[it.kind];
+    const pct = Math.round(it.w / base.w * 100);
     psize.value = Math.max(40, Math.min(200, pct));
     psizeOut.textContent = psize.value + '%';
   }
@@ -165,8 +217,8 @@ const String _designHtml = r'''
       render();
     } else {
       const p = pos(e);
-      const d = DEFAULTS[kind];
-      items.push({ kind, x: Math.round(p.x - d.w / 2), y: Math.round(p.y - d.h / 2),
+      const d = kinds[kind];
+      items.push({ mode, kind, x: Math.round(p.x - d.w / 2), y: Math.round(p.y - d.h / 2),
         w: d.w, h: d.h, text: d.text, color: d.color, fg: d.fg });
       selected = items.length - 1;
       drag = null;
@@ -197,7 +249,7 @@ const String _designHtml = r'''
   psize.addEventListener('input', () => {
     if (selected < 0) return;
     const it = items[selected];
-    const base = DEFAULTS[it.kind];
+    const base = kindsFor(it.mode)[it.kind];
     const f = Number(psize.value) / 100;
     it.w = Math.round(base.w * f);
     it.h = Math.round(base.h * f);
@@ -217,11 +269,8 @@ const String _designHtml = r'''
     items = []; selected = -1; render();
   };
 
-  document.querySelectorAll('.kind').forEach(b => {
-    b.addEventListener('click', () => {
-      kind = b.dataset.kind;
-      document.querySelectorAll('.kind').forEach(x => x.classList.toggle('gold', x === b));
-    });
+  document.querySelectorAll('.mode').forEach(b => {
+    b.addEventListener('click', () => setMode(b.dataset.mode));
   });
 
   // ===== الحفظ والفتح =====
@@ -229,7 +278,7 @@ const String _designHtml = r'''
     try { return JSON.parse(localStorage.getItem(DKEY) || '{}'); }
     catch (e) { return {}; }
   }
-  function refreshDesigns(selected) {
+  function refreshDesigns(selectedName) {
     const sel = document.getElementById('designs');
     const all = getDesigns();
     sel.innerHTML = '';
@@ -238,7 +287,7 @@ const String _designHtml = r'''
       o.value = n; o.textContent = n;
       sel.appendChild(o);
     });
-    if (selected) sel.value = selected;
+    if (selectedName) sel.value = selectedName;
   }
   function msg(t) { msgEl.textContent = t; }
 
@@ -279,11 +328,11 @@ const String _designHtml = r'''
   }
   function dartColor(c) {
     if (!c || c === 'transparent') return 'Colors.transparent';
-    const hex = c.replace('#', '').toUpperCase();
-    return 'Color(0xFF' + hex + ')';
+    return 'Color(0xFF' + c.replace('#', '').toUpperCase() + ')';
   }
   function generateDart() {
-    const children = items.map(it => {
+    const appItems = items.filter(it => it.mode !== 'game');
+    const children = appItems.map(it => {
       const common = 'Positioned(left: ' + it.x + ', top: ' + it.y + ', width: ' + it.w + ', height: ' + it.h + ', child: ';
       if (it.kind === 'button') {
         return common + 'ElevatedButton(onPressed: () {}, style: ElevatedButton.styleFrom(backgroundColor: ' + dartColor(it.color) + ', foregroundColor: ' + dartColor(it.fg) + '), child: Text(' + dartStr(it.text) + ')),)';
@@ -322,11 +371,13 @@ class DesignedScreen extends StatelessWidget {
 `;
   }
   document.getElementById('export').onclick = () => {
-    if (!items.length) { msg('التصميم فارغ، أضف عناصر أولاً'); return; }
+    const appItems = items.filter(it => it.mode !== 'game');
+    if (!appItems.length) { msg('لا توجد عناصر شاشة للتصدير في وضع التطبيق'); return; }
     codeEl.value = generateDart();
-    msg('تم توليد الكود، انسخه من الحقل أدناه');
+    msg('تم توليد الكود من عناصر شاشات التطبيق');
   };
 
+  setMode('app');
   render();
   refreshDesigns();
 </script>
