@@ -25,13 +25,14 @@ jobs:
 
       - name: Download offline runtimes
         run: |
-          mkdir -p assets/pyodide assets/three
+          mkdir -p assets/pyodide assets/three assets/cannon
           PY=https://cdn.jsdelivr.net/pyodide/v0.25.1/full
           for f in pyodide.js pyodide.asm.js pyodide.asm.wasm python_stdlib.zip pyodide-lock.json; do
             curl -fsSL "$PY/$f" -o "assets/pyodide/$f"
           done
           curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js -o assets/three/three.min.js
-          du -sh assets/pyodide assets/three
+          curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js -o assets/cannon/cannon.min.js
+          du -sh assets/pyodide assets/three assets/cannon
 
       - name: Generate app icon from uploaded design
         run: |
