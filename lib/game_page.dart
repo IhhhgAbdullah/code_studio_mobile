@@ -38,7 +38,7 @@ const String _gameHtml = r'''
 </head>
 <body>
 <div class="card">
-  <div class="title">الشاشة: اختر كائناً ثم انقر لإضافته، أو اسحب كائناً موجوداً لتحريكه</div>
+  <div class="title">الشاشة: اختر كائناً ثم انقر على الشاشة لإضافته، أو اسحب كائناً موجوداً لتحريكه</div>
   <div class="row">
     <button class="alt kind" data-kind="player">لاعب</button>
     <button class="alt kind" data-kind="coin">عملة</button>
@@ -73,6 +73,7 @@ const String _gameHtml = r'''
   let objects = [];
   let selected = -1;
   let drag = null;
+  let gameRef = null;
 
   const DEFAULTS = {
     player: { color: '#7CFC7C', size: 24, speed: 200 },
@@ -253,7 +254,6 @@ const String _gameHtml = r'''
     };
   }
 
-  // أقرب كائن تحت النقطة (من الأعلى للأسفل)
   function hitTest(x, y) {
     for (let i = objects.length - 1; i >= 0; i--) {
       const o = objects[i];
@@ -293,14 +293,15 @@ const String _gameHtml = r'''
   cv.addEventListener('pointerup', e => {
     const p = pos(e);
     if (drag) {
-      if (!drag.moved) {
-        // ضغطة بدون سحب: تحديد فقط
-      }
       drag = null;
       refresh();
       return;
     }
     touch.down = false;
+    // النقر على الكانفس يمرّر الإحداثيات لدالة pick إن وُجدت في الكود
+    if (gameRef && typeof gameRef.pick === 'function') {
+      try { gameRef.pick(p.x, p.y); } catch (err) { errEl.textContent = 'خطأ في النقر: ' + err; }
+    }
     if (kind === 'player') objects = objects.filter(o => o.kind !== 'player');
     const d = DEFAULTS[kind];
     objects.push({ kind, x: p.x, y: p.y, color: d.color, size: d.size, speed: d.speed });
@@ -327,7 +328,7 @@ const String _gameHtml = r'''
       .map(o => `{ x: ${o.x}, y: ${o.y}, r: ${o.size / 2}, vx: ${o.speed}, vy: ${Math.round(o.speed * 0.7)}, color: "${o.color}" }`);
     const walls = objects.filter(o => o.kind === 'wall')
       .map(o => `{ x: ${o.x}, y: ${o.y}, w: ${o.size}, h: ${Math.round(o.size / 2)}, color: "${o.color}" }`);
-    codeEl.value = `let player, coins, enemies, walls, score, timeLeft;
+    codeEl.value = `let player, coins, enemies, walls, score, timeLeft, state;
 
 function setup() {
   player = { x: ${px}, y: ${py}, speed: ${pspeed}, r: ${p ? p.size / 2 : 12}, color: "${p ? p.color : '#7CFC7C'}" };
@@ -336,10 +337,13 @@ function setup() {
   walls = [${walls.join(', ')}];
   score = 0;
   timeLeft = 30;
+  state = 'play';
 }
 
 function update(dt) {
-  timeLeft -= dt;
+  if (state !== 'play') return;
+  timeLeft = Math.max(0, timeLeft - dt);
+  if (timeLeft <= 0) { state = 'timeup'; return; }
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
@@ -382,9 +386,19 @@ function draw(ctx) {
   ctx.font = '15px sans-serif';
   ctx.fillText('النقاط: ' + score, 8, 22);
   ctx.fillText('الوقت: ' + Math.ceil(timeLeft), 250, 22);
+  if (state === 'timeup') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#D4AF37';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText('انتهى الوقت', 100, 230);
+    ctx.font = '16px sans-serif';
+    ctx.fillText('نتيجتك: ' + score, 130, 262);
+  }
 }`;
   }
 
+  // تشغيل الكود: يسجّل دوال الكود، ويمرّر النقر إلى pick إن وجدت
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
@@ -396,8 +410,9 @@ function draw(ctx) {
     const ctx = cv.getContext('2d');
     let g;
     try {
-      const src = codeEl.value + '\n;return { setup: typeof setup === "function" ? setup : null, update: typeof update === "function" ? update : null, draw: typeof draw === "function" ? draw : null };';
+      const src = codeEl.value + '\n;return { setup: typeof setup === "function" ? setup : null, update: typeof update === "function" ? update : null, draw: typeof draw === "function" ? draw : null, pick: typeof pick === "function" ? pick : null };';
       g = new Function('ctx', 'keys', 'touch', 'W', 'H', 'sprite', 'sound', src)(ctx, keys, touch, cv.width, cv.height, sprite, sound);
+      gameRef = g;
       if (g.setup) g.setup();
     } catch (e) {
       errEl.textContent = 'خطأ في الكود: ' + e;
