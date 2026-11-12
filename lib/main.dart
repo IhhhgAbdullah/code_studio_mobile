@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'design_page.dart';
 import 'game_page.dart';
 import 'home_page.dart';
 import 'match3_page.dart';
@@ -60,7 +61,7 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   static const _titles = [
-    'الرئيسية', 'المحرر', 'الألعاب', 'Match-3', 'ألغاز', '3D', 'الإعدادات',
+    'الرئيسية', 'المحرر', 'الألعاب', 'Match-3', 'ألغاز', 'تصميم', '3D', 'الإعدادات',
   ];
 
   void _openInEditor(String name) {
@@ -76,6 +77,7 @@ class _HomeShellState extends State<HomeShell> {
       const GamePage(),
       const Match3Page(),
       const PuzzlePage(),
+      const DesignPage(),
       const ThreePage(),
       const _SettingsPage(),
     ];
@@ -105,6 +107,7 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.sports_esports_outlined), label: 'الألعاب'),
           NavigationDestination(icon: Icon(Icons.grid_on_outlined), label: 'Match-3'),
           NavigationDestination(icon: Icon(Icons.extension_outlined), label: 'ألغاز'),
+          NavigationDestination(icon: Icon(Icons.dashboard_customize_outlined), label: 'تصميم'),
           NavigationDestination(icon: Icon(Icons.view_in_ar_outlined), label: '3D'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'الإعدادات'),
         ],
