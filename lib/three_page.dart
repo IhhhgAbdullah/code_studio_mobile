@@ -3,7 +3,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 const String _threeHtml = r'''
 <!DOCTYPE html>
-<html dir="rtl">
+<html dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
@@ -114,15 +114,38 @@ const String _threeHtml = r'''
 </div>
 </div>
 
-<script src="file:///android_asset/flutter_assets/assets/three/three.min.js"></script>
-<script src="file:///android_asset/flutter_assets/assets/cannon/cannon.min.js"></script>
+<div class="card"><div class="msg err" id="err"></div></div>
+
 <script>
+  const errEl = document.getElementById('err');
   const msgEl = document.getElementById('msg');
-  const errEl = document.createElement('div');
-  errEl.className = 'msg err';
-  document.getElementById('sceneMode').appendChild(errEl);
+  const pmsgEl = document.getElementById('pmsg');
   const SKEY = 'cs_3d_scenes';
   let kind = 'box';
+
+  // تحميل مكتبة برمجياً مع احتياط من الإنترنت، لكل مكتبة
+  function loadLib(srcs) {
+    return new Promise((resolve, reject) => {
+      let i = 0;
+      const tryNext = () => {
+        if (i >= srcs.length) { reject(new Error('تعذّر تحميل المكتبة')); return; }
+        const s = document.createElement('script');
+        s.src = srcs[i++];
+        s.onload = () => resolve(s.src);
+        s.onerror = tryNext;
+        document.head.appendChild(s);
+      };
+      tryNext();
+    });
+  }
+  const THREE_SRCS = [
+    'file:///android_asset/flutter_assets/assets/three/three.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
+  ];
+  const CANNON_SRCS = [
+    'file:///android_asset/flutter_assets/assets/cannon/cannon.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js'
+  ];
 
   function getScenes() {
     try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); }
@@ -386,7 +409,7 @@ function update(dt) {
     function tick() { renderer.render(scene, camera); requestAnimationFrame(tick); }
     tick();
     refreshScenes();
-    msgEl.textContent = 'المحرك جاهز (من ملفات التطبيق)';
+    msgEl.textContent = 'المحرك جاهز';
   }
 
   // ===== لعبة الفيزياء =====
@@ -417,7 +440,6 @@ function update(dt) {
     world.defaultContactMaterial.friction = 0.3;
     world.defaultContactMaterial.restitution = 0.4;
 
-    // الأرضية والحواجز
     const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     world.addBody(groundBody);
@@ -441,7 +463,6 @@ function update(dt) {
       scene.add(m);
     });
 
-    // اللاعب (كرة ذهبية)
     const playerR = 0.6;
     const playerBody = new CANNON.Body({ mass: 2, shape: new CANNON.Sphere(playerR), material: matDefault });
     playerBody.position.set(0, 2, 6);
@@ -455,7 +476,6 @@ function update(dt) {
     const hScore = document.getElementById('hScore');
     const hLives = document.getElementById('hLives');
     const hTime = document.getElementById('hTime');
-    const pmsg = document.getElementById('pmsg');
 
     function spawnEnemy() {
       const r = 0.5;
@@ -481,7 +501,7 @@ function update(dt) {
       playerBody.velocity.set(0, 0, 0);
       playerBody.angularVelocity.set(0, 0, 0);
       score = 0; lives = 3; timeLeft = 60; over = false; paused = false; spawnT = 0;
-      pmsg.textContent = '';
+      pmsgEl.textContent = '';
       updateHud();
     }
 
@@ -491,7 +511,6 @@ function update(dt) {
       hTime.textContent = 'الوقت: ' + Math.max(0, Math.ceil(timeLeft));
     }
 
-    // التحكم: سحب الكرة أو الأسهم
     const keys = {};
     window.addEventListener('keydown', e => { keys[e.key] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
     window.addEventListener('keyup', e => { keys[e.key] = false; });
@@ -518,7 +537,6 @@ function update(dt) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (!over && !paused) {
-        // الأسهم
         const f = 25;
         if (keys.ArrowLeft) playerBody.applyForce(new CANNON.Vec3(-f, 0, 0), playerBody.position);
         if (keys.ArrowRight) playerBody.applyForce(new CANNON.Vec3(f, 0, 0), playerBody.position);
@@ -530,7 +548,6 @@ function update(dt) {
         spawnT += dt;
         if (spawnT > 1.5 && enemies.length < 12) { spawnT = 0; spawnEnemy(); }
 
-        // الأعداء: من يسقط خارج الساحة يعطي نقطة، ومن يلمس اللاعب يخصم حياة
         enemies = enemies.filter(e => {
           const p = e.body.position;
           if (p.y < -2 || Math.abs(p.x) > 12 || Math.abs(p.z) > 12) {
@@ -548,12 +565,11 @@ function update(dt) {
           return true;
         });
 
-        if (lives <= 0) { over = true; pmsg.textContent = 'انتهت اللعبة. نتيجتك: ' + score; }
-        else if (timeLeft <= 0) { over = true; pmsg.textContent = 'انتهى الوقت. نتيجتك: ' + score; }
+        if (lives <= 0) { over = true; pmsgEl.textContent = 'انتهت اللعبة. نتيجتك: ' + score; }
+        else if (timeLeft <= 0) { over = true; pmsgEl.textContent = 'انتهى الوقت. نتيجتك: ' + score; }
         updateHud();
       }
 
-      // مزامنة الشكل مع الفيزياء
       playerMesh.position.copy(playerBody.position);
       playerMesh.quaternion.copy(playerBody.quaternion);
       enemies.forEach(e => {
@@ -567,7 +583,7 @@ function update(dt) {
     phys = { reset };
     reset();
     requestAnimationFrame(tick);
-    pmsg.textContent = 'اجمع الأعداء بالتدحرج. الأعداء التي تسقط خارج الساحة تعطيك نقاطاً.';
+    pmsgEl.textContent = 'اجمع الأعداء بالتدحرج. الأعداء التي تسقط خارج الساحة تعطيك نقاطاً.';
   }
 
   // ===== التبديل بين الوضعين =====
@@ -577,18 +593,21 @@ function update(dt) {
       document.querySelectorAll('.mode').forEach(x => x.classList.toggle('gold', x === b));
       document.getElementById('sceneMode').style.display = m === 'scene' ? 'block' : 'none';
       document.getElementById('physicsMode').style.display = m === 'physics' ? 'block' : 'none';
-      if (m === 'physics' && !phys) startPhysics();
+      if (m === 'physics' && !phys) {
+        if (typeof CANNON === 'undefined') {
+          pmsgEl.textContent = 'جاري تحميل محرك الفيزياء...';
+          loadLib(CANNON_SRCS).then(() => startPhysics()).catch(() => { pmsgEl.textContent = 'تعذّر تحميل Cannon.js'; });
+        } else {
+          startPhysics();
+        }
+      }
     });
   });
 
-  if (typeof THREE === 'undefined') {
-    errEl.textContent = 'تعذّر تحميل Three.js من ملفات التطبيق.';
-  } else {
-    startScene();
-    if (typeof CANNON === 'undefined') {
-      document.getElementById('pmsg').textContent = 'تعذّر تحميل Cannon.js من ملفات التطبيق.';
-    }
-  }
+  // ===== بدء التشغيل: تحميل Three.js ثم بدء المشهد =====
+  loadLib(THREE_SRCS)
+    .then(() => startScene())
+    .catch(() => { errEl.textContent = 'تعذّر تحميل Three.js من ملفات التطبيق أو الإنترنت.'; });
 </script>
 </body>
 </html>
