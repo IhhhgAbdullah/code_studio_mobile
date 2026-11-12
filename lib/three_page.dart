@@ -11,10 +11,10 @@ const String _threeHtml = r'''
   * { box-sizing: border-box; }
   body { margin: 0; padding: 10px; background: #0D2B52; color: #fff; font-family: sans-serif; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 10px; margin-bottom: 10px; }
-  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; }
+  .title { color: #D4AF37; font-weight: bold; font-size: 14px; margin-bottom: 8px; direction: rtl; text-align: right; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
-  #stage { width: 100%; height: 320px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
+  #stage { width: 100%; height: 300px; border-radius: 10px; overflow: hidden; background: #0A1F3D; touch-action: none; }
   #stage canvas { display: block; width: 100% !important; height: 100% !important; }
   button { padding: 10px; font-size: 14px; border: none; border-radius: 10px;
     background: #D4AF37; color: #0D2B52; font-weight: bold; }
@@ -24,13 +24,15 @@ const String _threeHtml = r'''
   button:disabled { opacity: 0.4; }
   input[type=text], select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #D4AF37;
     background: #0A1F3D; color: #fff; font-size: 14px; margin-top: 8px; }
+  textarea { width: 100%; height: 170px; background: #0A1F3D; color: #e6edf7; border: none;
+    border-radius: 10px; padding: 10px; font-family: monospace; font-size: 13px; direction: ltr; }
   .prop { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
   .prop label { min-width: 52px; }
   .prop input[type=range] { flex: 1; }
   .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
   .prop span { min-width: 40px; text-align: left; direction: ltr; }
-  .hint { font-size: 12px; color: #cfd8e6; margin-top: 8px; }
-  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; }
+  .hint { font-size: 12px; color: #cfd8e6; margin-top: 8px; direction: rtl; text-align: right; }
+  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; direction: rtl; text-align: right; }
   .err { color: #ff6b6b; }
 </style>
 </head>
@@ -60,6 +62,8 @@ const String _threeHtml = r'''
     <button id="clear" class="danger">حذف الكل</button>
   </div>
   <div class="hint">انقر على شكل لتحديده. اسحبه لتحريكه، واسحب الفراغ لتدوير الكاميرا.</div>
+  <div id="msg" class="msg"></div>
+  <div id="err" class="msg err"></div>
 </div>
 <div class="card">
   <div class="title">حفظ المشهد</div>
@@ -72,30 +76,37 @@ const String _threeHtml = r'''
   <div class="row">
     <button id="delscene" class="danger">حذف المشهد المحفوظ</button>
   </div>
-  <div id="msg" class="msg"></div>
-  <div id="err" class="msg err"></div>
 </div>
+<div class="card">
+  <div class="title">كود 3D (يعمل على المشهد): دوال setup و update</div>
+  <textarea id="code"></textarea>
+  <div class="row">
+    <button id="run">تشغيل الكود</button>
+    <button id="stopcode" class="danger">إيقاف الكود</button>
+  </div>
+  <div class="hint">المتاح في الكود: addBox(x, y, z, color)، addSphere(...)، addCylinder(...)، scene، THREE، dt، clear()</div>
+</div>
+<script src="file:///android_asset/flutter_assets/assets/three/three.min.js"></script>
 <script>
   const errEl = document.getElementById('err');
   const msgEl = document.getElementById('msg');
   const SKEY = 'cs_3d_scenes';
   let kind = 'box';
 
-  // مصادر Three.js: محلياً أولاً، ثم cdnjs كاحتياط
-  const SOURCES = [
-    'file:///android_asset/flutter_assets/assets/three/three.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
-  ];
+  const SAMPLE = `let spin = 0;
+let crate;
 
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = () => resolve(src);
-      s.onerror = () => reject(new Error(src));
-      document.head.appendChild(s);
-    });
-  }
+function setup() {
+  addBox(0, 0.7, 0, 0xd4af37);
+  addSphere(2, 0.7, 1, 0x7cfc7c);
+  addCylinder(-2, 0.8, -1, 0x82aaff);
+  crate = scene.children[scene.children.length - 3];
+}
+
+function update(dt) {
+  spin += dt;
+  if (crate) crate.rotation.y += dt * 1.2;
+}`;
 
   function getScenes() {
     try { return JSON.parse(localStorage.getItem(SKEY) || '{}'); }
@@ -116,7 +127,7 @@ const String _threeHtml = r'''
     if (selected) sel.value = selected;
   }
 
-  function startScene(sourceLabel) {
+  function startScene() {
     const stage = document.getElementById('stage');
     const W = () => stage.clientWidth;
     const H = () => stage.clientHeight;
@@ -300,6 +311,86 @@ const String _threeHtml = r'''
       msgEl.textContent = 'تم حذف المشهد: ' + name;
     };
 
+    // ===== محرك الكود 3D =====
+    let codeState = null;
+    let codeRaf = null;
+    let codeObjects = [];
+
+    function addBox(x, y, z, color) {
+      const m = makeMesh('box', color);
+      m.position.set(x, y, z);
+      scene.add(m);
+      shapes.push(m);
+      codeObjects.push(m);
+      return m;
+    }
+    function addSphere(x, y, z, color) {
+      const m = makeMesh('sphere', color);
+      m.position.set(x, y, z);
+      scene.add(m);
+      shapes.push(m);
+      codeObjects.push(m);
+      return m;
+    }
+    function addCylinder(x, y, z, color) {
+      const m = makeMesh('cylinder', color);
+      m.position.set(x, y, z);
+      scene.add(m);
+      shapes.push(m);
+      codeObjects.push(m);
+      return m;
+    }
+    function clearCodeObjects() {
+      codeObjects.slice().forEach(removeMesh);
+      codeObjects = [];
+    }
+
+    function stopCode() {
+      if (codeRaf) cancelAnimationFrame(codeRaf);
+      codeRaf = null;
+      codeState = null;
+    }
+
+    function runCode() {
+      stopCode();
+      clearCodeObjects();
+      errEl.textContent = '';
+      const src = document.getElementById('code').value;
+      let api;
+      try {
+        api = new Function('scene', 'THREE', 'addBox', 'addSphere', 'addCylinder', 'clear',
+          src + '\n;return { setup: typeof setup === "function" ? setup : null, update: typeof update === "function" ? update : null };'
+        )(scene, THREE, addBox, addSphere, addCylinder, clearCodeObjects);
+        if (api.setup) api.setup();
+      } catch (e) {
+        errEl.textContent = 'خطأ في الكود: ' + e;
+        return;
+      }
+      let last = performance.now();
+      function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        try {
+          if (api.update) api.update(dt);
+        } catch (e) {
+          errEl.textContent = 'خطأ أثناء التشغيل: ' + e;
+          codeRaf = null;
+          return;
+        }
+        codeRaf = requestAnimationFrame(frame);
+      }
+      codeRaf = requestAnimationFrame(frame);
+      msgEl.textContent = 'الكود يعمل';
+    }
+
+    document.getElementById('run').onclick = runCode;
+    document.getElementById('stopcode').onclick = () => {
+      stopCode();
+      msgEl.textContent = 'تم إيقاف الكود';
+    };
+    document.getElementById('code').value = SAMPLE;
+
+    // ===== الاختيار والسحب =====
     let drag = null;
     renderer.domElement.addEventListener('pointerdown', e => {
       const hit = pickShape(e.clientX, e.clientY);
@@ -365,25 +456,14 @@ const String _threeHtml = r'''
     }
     tick();
     refreshScenes();
-    msgEl.textContent = 'المحرك جاهز (' + sourceLabel + ')';
+    msgEl.textContent = 'المحرك جاهز (من ملفات التطبيق)';
   }
 
-  // تحميل Three.js: محلياً أولاً، ثم cdnjs كاحتياط
-  (async function init() {
-    let loaded = null;
-    for (const src of SOURCES) {
-      try {
-        await loadScript(src);
-        if (typeof THREE !== 'undefined') { loaded = src; break; }
-      } catch (e) { /* جرّب المصدر التالي */ }
-    }
-    if (!loaded) {
-      errEl.textContent = 'تعذّر تحميل Three.js محلياً وعبر الإنترنت.';
-      return;
-    }
-    const label = loaded.startsWith('file://') ? 'من ملفات التطبيق' : 'من الإنترنت (احتياط)';
-    startScene(label);
-  })();
+  if (typeof THREE === 'undefined') {
+    errEl.textContent = 'تعذّر تحميل Three.js من ملفات التطبيق.';
+  } else {
+    startScene();
+  }
 </script>
 </body>
 </html>
