@@ -17,6 +17,7 @@ const String _designHtml = r'''
     background: #2A4A7A; color: #fff; font-weight: bold; }
   button.danger { background: #8B2A2A; }
   button.gold { background: #D4AF37; color: #0D2B52; }
+  button:disabled { opacity: 0.4; }
   .row { display: flex; gap: 8px; margin-top: 8px; }
   .row > * { flex: 1; }
   #phone { position: relative; width: 240px; height: 420px; margin: 0 auto; background: #0A1F3D;
@@ -28,9 +29,12 @@ const String _designHtml = r'''
   .prop label { min-width: 52px; }
   .prop input[type=range] { flex: 1; }
   .prop input[type=color] { width: 46px; height: 30px; border: none; background: none; }
-  input[type=text] { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #D4AF37;
+  input[type=text], select { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #D4AF37;
     background: #0A1F3D; color: #fff; font-size: 14px; }
+  textarea { width: 100%; height: 180px; background: #0A1F3D; color: #e6edf7; border: none;
+    border-radius: 10px; padding: 10px; font-family: monospace; font-size: 12px; direction: ltr; margin-top: 8px; }
   .hint { font-size: 12px; color: #cfd8e6; margin-top: 8px; text-align: right; }
+  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; text-align: right; }
 </style>
 </head>
 <body>
@@ -67,7 +71,26 @@ const String _designHtml = r'''
     <span id="psizeOut">100%</span>
   </div>
 </div>
+<div class="card">
+  <div class="title">حفظ التصميم وفتحه</div>
+  <input type="text" id="sname" placeholder="اسم التصميم (مثال: شاشة_الرئيسية)">
+  <div class="row">
+    <button id="save" class="gold">حفظ التصميم</button>
+    <button id="load">فتح المحدد</button>
+  </div>
+  <select id="designs" style="margin-top:8px"></select>
+  <div class="row">
+    <button id="delds" class="danger">حذف المحفوظ</button>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+<div class="card">
+  <div class="title">تصدير كود Flutter</div>
+  <button id="export" class="gold">توليد الكود من التصميم</button>
+  <textarea id="code" placeholder="الكود يظهر هنا، انسخه إلى مشروعك"></textarea>
+</div>
 <script>
+  const DKEY = 'cs_designs';
   const phone = document.getElementById('phone');
   const propsEl = document.getElementById('props');
   const ptext = document.getElementById('ptext');
@@ -76,6 +99,9 @@ const String _designHtml = r'''
   const psizeOut = document.getElementById('psizeOut');
   const delsel = document.getElementById('delsel');
   const textRow = document.getElementById('textRow');
+  const msgEl = document.getElementById('msg');
+  const codeEl = document.getElementById('code');
+  const W = 240, H = 420;
 
   const DEFAULTS = {
     button: { w: 140, h: 44, text: 'زر', color: '#D4AF37', fg: '#0D2B52' },
@@ -154,8 +180,8 @@ const String _designHtml = r'''
     if (!drag.moved) return;
     const p = pos(e);
     const it = items[drag.i];
-    it.x = Math.max(0, Math.min(240 - it.w, Math.round(p.x - drag.dx)));
-    it.y = Math.max(0, Math.min(420 - it.h, Math.round(p.y - drag.dy)));
+    it.x = Math.max(0, Math.min(W - it.w, Math.round(p.x - drag.dx)));
+    it.y = Math.max(0, Math.min(H - it.h, Math.round(p.y - drag.dy)));
     render();
   });
 
@@ -175,8 +201,8 @@ const String _designHtml = r'''
     const f = Number(psize.value) / 100;
     it.w = Math.round(base.w * f);
     it.h = Math.round(base.h * f);
-    it.x = Math.max(0, Math.min(240 - it.w, it.x));
-    it.y = Math.max(0, Math.min(420 - it.h, it.y));
+    it.x = Math.max(0, Math.min(W - it.w, it.x));
+    it.y = Math.max(0, Math.min(H - it.h, it.y));
     psizeOut.textContent = psize.value + '%';
     render();
   });
@@ -198,7 +224,111 @@ const String _designHtml = r'''
     });
   });
 
+  // ===== الحفظ والفتح =====
+  function getDesigns() {
+    try { return JSON.parse(localStorage.getItem(DKEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function refreshDesigns(selected) {
+    const sel = document.getElementById('designs');
+    const all = getDesigns();
+    sel.innerHTML = '';
+    Object.keys(all).sort().forEach(n => {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      sel.appendChild(o);
+    });
+    if (selected) sel.value = selected;
+  }
+  function msg(t) { msgEl.textContent = t; }
+
+  document.getElementById('save').onclick = () => {
+    const name = document.getElementById('sname').value.trim();
+    if (!name) { msg('اكتب اسم التصميم أولاً'); return; }
+    const all = getDesigns();
+    all[name] = JSON.parse(JSON.stringify(items));
+    try {
+      localStorage.setItem(DKEY, JSON.stringify(all));
+      refreshDesigns(name);
+      msg('تم حفظ التصميم: ' + name);
+    } catch (e) { msg('تعذّر الحفظ: ' + e); }
+  };
+  document.getElementById('load').onclick = () => {
+    const name = document.getElementById('designs').value;
+    const all = getDesigns();
+    if (!name || !(name in all)) { msg('لا يوجد تصميم محدد لفتحه'); return; }
+    items = JSON.parse(JSON.stringify(all[name]));
+    selected = -1;
+    document.getElementById('sname').value = name;
+    render();
+    msg('تم فتح: ' + name);
+  };
+  document.getElementById('delds').onclick = () => {
+    const name = document.getElementById('designs').value;
+    const all = getDesigns();
+    if (!name || !(name in all)) { msg('لا يوجد تصميم محدد للحذف'); return; }
+    delete all[name];
+    localStorage.setItem(DKEY, JSON.stringify(all));
+    refreshDesigns();
+    msg('تم حذف: ' + name);
+  };
+
+  // ===== توليد كود Flutter =====
+  function dartStr(s) {
+    return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\$/g, '\\$') + "'";
+  }
+  function dartColor(c) {
+    if (!c || c === 'transparent') return 'Colors.transparent';
+    const hex = c.replace('#', '').toUpperCase();
+    return 'Color(0xFF' + hex + ')';
+  }
+  function generateDart() {
+    const children = items.map(it => {
+      const common = 'Positioned(left: ' + it.x + ', top: ' + it.y + ', width: ' + it.w + ', height: ' + it.h + ', child: ';
+      if (it.kind === 'button') {
+        return common + 'ElevatedButton(onPressed: () {}, style: ElevatedButton.styleFrom(backgroundColor: ' + dartColor(it.color) + ', foregroundColor: ' + dartColor(it.fg) + '), child: Text(' + dartStr(it.text) + ')),)';
+      }
+      if (it.kind === 'text') {
+        return common + 'Center(child: Text(' + dartStr(it.text) + ', style: TextStyle(color: ' + dartColor(it.fg) + '))),)';
+      }
+      if (it.kind === 'input') {
+        return common + 'TextField(decoration: InputDecoration(hintText: ' + dartStr(it.text) + ', filled: true, fillColor: ' + dartColor(it.color) + ', border: OutlineInputBorder())),)';
+      }
+      return common + 'Container(decoration: BoxDecoration(color: ' + dartColor(it.color) + ', borderRadius: BorderRadius.circular(8))),)';
+    });
+    return `import 'package:flutter/material.dart';
+
+class DesignedScreen extends StatelessWidget {
+  const DesignedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0D2B52),
+      body: Center(
+        child: SizedBox(
+          width: ${W},
+          height: ${H},
+          child: Stack(
+            children: [
+              ${children.join('\n              ')}
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+`;
+  }
+  document.getElementById('export').onclick = () => {
+    if (!items.length) { msg('التصميم فارغ، أضف عناصر أولاً'); return; }
+    codeEl.value = generateDart();
+    msg('تم توليد الكود، انسخه من الحقل أدناه');
+  };
+
   render();
+  refreshDesigns();
 </script>
 </body>
 </html>
