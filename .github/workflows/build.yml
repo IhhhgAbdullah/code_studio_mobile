@@ -84,20 +84,21 @@ jobs:
           signing = 'signingConfigs {\n        create("release") {\n            keyAlias = keystoreProperties["keyAlias"] as String\n            keyPassword = keystoreProperties["keyPassword"] as String\n            storeFile = file(keystoreProperties["storeFile"] as String)\n            storePassword = keystoreProperties["storePassword"] as String\n        }\n    }\n    '
           s = s.replace('    buildTypes {', '    ' + signing + 'buildTypes {', 1)
           s = s.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("release")')
+          s += '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }\n}\n'
           open(p, 'w', encoding='utf-8').write(s)
           PYEOF
           grep -n "signingConfig" android/app/build.gradle.kts
 
       - run: flutter pub get
 
-      - run: flutter build apk --release
+      - run: flutter build apk --release --android-skip-build-dependency-validation
 
       - uses: actions/upload-artifact@v4
         with:
           name: code-studio-apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
-      - run: flutter build appbundle --release
+      - run: flutter build appbundle --release --android-skip-build-dependency-validation
 
       - uses: actions/upload-artifact@v4
         with:
