@@ -123,7 +123,6 @@ const String _threeHtml = r'''
   const SKEY = 'cs_3d_scenes';
   let kind = 'box';
 
-  // تحميل مكتبة برمجياً مع احتياط من الإنترنت، لكل مكتبة
   function loadLib(srcs) {
     return new Promise((resolve, reject) => {
       let i = 0;
@@ -471,8 +470,14 @@ function update(dt) {
     const playerMesh = new THREE.Mesh(new THREE.SphereGeometry(playerR, 24, 18), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.3, roughness: 0.4 }));
     scene.add(playerMesh);
 
+    // إعدادات التوازن
+    const SPAWN_EVERY = 3;      // ثوانٍ بين كل عدو
+    const MAX_ENEMIES = 6;      // أقصى عدد أعداء في الساحة
+    const HIT_SPEED = 4;        // أقل سرعة نسبية تُحسب اصطداماً مؤذياً
+    const INVUL_TIME = 1.5;     // مهلة بعد كل خصم حياة
+
     let enemies = [];
-    let score = 0, lives = 3, timeLeft = 60, over = false, paused = false, spawnT = 0;
+    let score = 0, lives = 3, timeLeft = 60, over = false, paused = false, spawnT = 0, invul = 0;
     const hScore = document.getElementById('hScore');
     const hLives = document.getElementById('hLives');
     const hTime = document.getElementById('hTime');
@@ -485,7 +490,7 @@ function update(dt) {
       world.addBody(body);
       const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), new THREE.MeshStandardMaterial({ color: 0xff6b6b }));
       scene.add(mesh);
-      enemies.push({ body, mesh, r, hit: false });
+      enemies.push({ body, mesh, r });
     }
 
     function removeEnemy(e) {
@@ -500,7 +505,7 @@ function update(dt) {
       playerBody.position.set(0, 2, 6);
       playerBody.velocity.set(0, 0, 0);
       playerBody.angularVelocity.set(0, 0, 0);
-      score = 0; lives = 3; timeLeft = 60; over = false; paused = false; spawnT = 0;
+      score = 0; lives = 3; timeLeft = 60; over = false; paused = false; spawnT = 0; invul = 0;
       pmsgEl.textContent = '';
       updateHud();
     }
@@ -546,7 +551,8 @@ function update(dt) {
         world.step(1 / 60, dt, 3);
         timeLeft -= dt;
         spawnT += dt;
-        if (spawnT > 1.5 && enemies.length < 12) { spawnT = 0; spawnEnemy(); }
+        if (invul > 0) invul -= dt;
+        if (spawnT > SPAWN_EVERY && enemies.length < MAX_ENEMIES) { spawnT = 0; spawnEnemy(); }
 
         enemies = enemies.filter(e => {
           const p = e.body.position;
@@ -555,10 +561,16 @@ function update(dt) {
             removeEnemy(e);
             return false;
           }
-          const d = Math.hypot(p.x - playerBody.position.x, p.y - playerBody.position.y, p.z - playerBody.position.z);
-          if (d < e.r + playerR + 0.1 && !e.hit) {
-            e.hit = true;
+          // الخصم يحدث فقط عند اصطدام قوي بعد انتهاء المهلة
+          const dx = e.body.position.x - playerBody.position.x;
+          const dy = e.body.position.y - playerBody.position.y;
+          const dz = e.body.position.z - playerBody.position.z;
+          const dist = Math.hypot(dx, dy, dz);
+          const rv = e.body.velocity.vsub(playerBody.velocity);
+          const relSpeed = Math.hypot(rv.x, rv.y, rv.z);
+          if (dist < e.r + playerR + 0.1 && relSpeed > HIT_SPEED && invul <= 0) {
             lives--;
+            invul = INVUL_TIME;
             removeEnemy(e);
             return false;
           }
@@ -604,7 +616,6 @@ function update(dt) {
     });
   });
 
-  // ===== بدء التشغيل: تحميل Three.js ثم بدء المشهد =====
   loadLib(THREE_SRCS)
     .then(() => startScene())
     .catch(() => { errEl.textContent = 'تعذّر تحميل Three.js من ملفات التطبيق أو الإنترنت.'; });
