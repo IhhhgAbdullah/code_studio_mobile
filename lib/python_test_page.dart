@@ -104,6 +104,7 @@ const String _pyHtml = r'''
     <button id="imp" class="alt">استيراد</button>
   </div>
   <button id="copyProj" class="alt" style="margin-top:8px">نسخ المشروع إلى الحافظة</button>
+  <button id="impClip" class="alt" style="margin-top:8px">استيراد من الحافظة</button>
   <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا" style="width:100%;margin-top:8px;background:#0A1F3D;color:#fff;border:1px solid #D4AF37;border-radius:10px;padding:8px;direction:ltr"></textarea>
   <div id="msg" class="msg"></div>
 </div>
@@ -394,6 +395,21 @@ const String _pyHtml = r'''
     }
   }
 
+  // استيراد مباشر من الحافظة: يقرأ النص ثم يستورده
+  async function importFromClipboard() {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (e) {
+      document.getElementById('xdata').focus();
+      msg('تعذّر قراءة الحافظة. ألصق النص في الحقل أدناه، ثم اضغط استيراد');
+      return;
+    }
+    if (!text || !text.trim()) { msg('الحافظة فارغة'); return; }
+    document.getElementById('xdata').value = text;
+    importAll();
+  }
+
   function importAll() {
     const raw = document.getElementById('xdata').value.trim();
     let data;
@@ -635,6 +651,7 @@ const String _pyHtml = r'''
   document.getElementById('mkdir').onclick = newFolder;
   document.getElementById('exp').onclick = exportAll;
   document.getElementById('copyProj').onclick = copyProject;
+  document.getElementById('impClip').onclick = importFromClipboard;
   document.getElementById('imp').onclick = importAll;
   document.getElementById('term-in').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); termRun(); }
