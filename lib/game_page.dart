@@ -59,7 +59,7 @@ function draw(ctx) {
     }
   }
   if (state === 'over' || state === 'win') {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 360, 480);
     ctx.fillStyle = '#D4AF37'; ctx.font = 'bold 24px sans-serif';
     ctx.fillText(state === 'win' ? 'أحسنت! أنهيت اللعبة' : 'انتهى الوقت', 70, 220);
     ctx.font = '16px sans-serif';
@@ -86,15 +86,15 @@ function update(dt) {
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
   if (touch.down) player.x += (touch.x - player.x) * 0.2;
-  player.x = Math.max(player.r, Math.min(W - player.r, player.x));
+  player.x = Math.max(player.r, Math.min(360 - player.r, player.x));
   spawnT -= dt;
   if (spawnT <= 0) {
     spawnT = Math.max(0.35, 0.9 - score * 0.01);
-    obstacles.push({ x: 20 + Math.random() * (W - 40), y: -20, r: 14 + Math.random() * 10, v: 140 + score * 2 });
+    obstacles.push({ x: 20 + Math.random() * 320, y: -20, r: 14 + Math.random() * 10, v: 140 + score * 2 });
   }
   for (const o of obstacles) o.y += o.v * dt;
   obstacles = obstacles.filter(o => {
-    if (o.y > H + o.r) { score += 1; return false; }
+    if (o.y > 480 + o.r) { score += 1; return false; }
     if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r) {
       lives--;
       if (lives <= 0) { state = 'over'; saveBest(); }
@@ -119,7 +119,7 @@ function draw(ctx) {
   ctx.fillText('الوقت: ' + Math.ceil(Math.max(0, timeLeft)), 250, 22);
   ctx.fillText('أفضل: ' + best, 250, 44);
   if (state === 'over') {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 360, 480);
     ctx.fillStyle = '#D4AF37'; ctx.font = 'bold 24px sans-serif';
     ctx.fillText('انتهت اللعبة', 95, 220);
     ctx.font = '16px sans-serif';
@@ -149,8 +149,8 @@ function update(dt) {
   if (keys.ArrowUp) player.y -= s;
   if (keys.ArrowDown) player.y += s;
   if (touch.down) { player.x += (touch.x - player.x) * 0.15; player.y += (touch.y - player.y) * 0.15; }
-  player.x = Math.max(player.r, Math.min(W - player.r, player.x));
-  player.y = Math.max(player.r, Math.min(H - player.r, player.y));
+  player.x = Math.max(player.r, Math.min(360 - player.r, player.x));
+  player.y = Math.max(player.r, Math.min(480 - player.r, player.y));
   coins = coins.filter(c => {
     if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + player.r) { score += 10; return false; }
     return true;
@@ -169,7 +169,7 @@ function draw(ctx) {
   ctx.fillText('النقاط: ' + score, 8, 22);
   ctx.fillText('الوقت: ' + Math.ceil(Math.max(0, timeLeft)), 250, 22);
   if (state === 'over') {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 360, 480);
     ctx.fillStyle = '#D4AF37'; ctx.font = 'bold 24px sans-serif';
     ctx.fillText('انتهى الوقت', 100, 230);
     ctx.font = '16px sans-serif';
@@ -179,7 +179,8 @@ function draw(ctx) {
 }
 ''';
 
-String _htmlFor(String gameJs, String title) => '''
+String _pageHtml(String gameJs, String title) {
+  return '''
 <!DOCTYPE html>
 <html dir="rtl">
 <head>
@@ -209,6 +210,9 @@ String _htmlFor(String gameJs, String title) => '''
   </div>
   <div id="err" class="err"></div>
 </div>
+<script>
+$gameJs
+</script>
 <script>
   const W = 360, H = 480;
   const cv = document.getElementById('cv');
@@ -240,7 +244,7 @@ String _htmlFor(String gameJs, String title) => '''
     stop();
     errEl.textContent = '';
     try {
-      game = new Function('ctx', 'keys', 'touch', 'W', 'H', GAME_JS + '\\n;return { setup, update, draw, pick: typeof pick === "function" ? pick : null };')(ctx, keys, touch, W, H);
+      game = { setup, update, draw, pick: typeof pick === 'function' ? pick : null };
       game.setup();
     } catch (e) { errEl.textContent = 'خطأ في اللعبة: ' + e; return; }
     let last = performance.now();
@@ -258,7 +262,6 @@ String _htmlFor(String gameJs, String title) => '''
     raf = requestAnimationFrame(frame);
   }
 
-  const GAME_JS = `` + ${'`'}__GAME__${'`'} + ``;
   document.getElementById('run').onclick = run;
   document.getElementById('stop').onclick = () => { stop(); errEl.textContent = 'متوقفة'; };
   run();
@@ -266,32 +269,6 @@ String _htmlFor(String gameJs, String title) => '''
 </body>
 </html>
 ''';
-
-// بناء صفحة اللعبة بدمج كودها داخل السكربت
-String _buildGameHtml(String gameJs, String title) {
-  final html = _htmlFor(gameJs, title);
-  // نضع كود اللعبة كنص JSON آمن داخل متغير JavaScript
-  final jsString = _jsonEscape(gameJs);
-  return html.replaceFirst(
-    "const GAME_JS = `` + \${'`'}__GAME__\${'`'} + ``;",
-    'const GAME_JS = $jsString;',
-  );
-}
-
-String _jsonEscape(String s) {
-  final b = StringBuffer('"');
-  for (final ch in s.runes) {
-    final c = String.fromCharCode(ch);
-    switch (c) {
-      case '"': b.write('\\"'); break;
-      case '\\': b.write('\\\\'); break;
-      case '\n': b.write('\\n'); break;
-      case '\r': break;
-      default: b.write(c);
-    }
-  }
-  b.write('"');
-  return b.toString();
 }
 
 class GamePage extends StatefulWidget {
@@ -307,28 +284,27 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage> {
   late final WebViewController _controller;
 
-  String get _js {
-    switch (widget.template) {
-      case 'dodge': return _dodgeJs;
-      case 'coins': return _coinsJs;
-      default: return _memoryJs;
-    }
-  }
-
-  String get _title {
-    switch (widget.template) {
-      case 'dodge': return 'تجنب العوائق';
-      case 'coins': return 'جمع العملات';
-      default: return 'الذاكرة';
-    }
-  }
-
   @override
   void initState() {
     super.initState();
+    final String js;
+    final String title;
+    switch (widget.template) {
+      case 'dodge':
+        js = _dodgeJs;
+        title = 'تجنب العوائق';
+        break;
+      case 'coins':
+        js = _coinsJs;
+        title = 'جمع العملات';
+        break;
+      default:
+        js = _memoryJs;
+        title = 'الذاكرة';
+    }
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..loadHtmlString(_buildGameHtml(_js, _title), baseUrl: 'https://localhost/');
+      ..loadHtmlString(_pageHtml(js, title), baseUrl: 'https://localhost/');
   }
 
   @override
