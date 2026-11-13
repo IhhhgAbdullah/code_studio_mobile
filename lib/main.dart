@@ -63,12 +63,20 @@ class _HomeShellState extends State<HomeShell> {
 
   static const _tabs = ['الرئيسية', 'الألعاب', 'التصميم', 'المحرر'];
 
-  // الصفحات الفرعية لكل تبويب
+  // كل صفحة فرعية: اسم العرض، ومعرّف الصفحة
   static const _subs = {
-    0: ['الرئيسية'],
-    1: ['الذاكرة', 'جمع العملات', 'تجنب العوائق', 'Match-3', 'ألغاز', 'الفيزياء 3D', 'مشهد 3D'],
-    2: ['شاشات', 'واجهة لعبة', 'قوالب'],
-    3: ['Python', 'الإعدادات'],
+    0: [['الرئيسية', 'home']],
+    1: [
+      ['الذاكرة', 'memory'],
+      ['جمع العملات', 'coins'],
+      ['تجنب العوائق', 'dodge'],
+      ['Match-3', 'match3'],
+      ['ألغاز', 'puzzle'],
+      ['الفيزياء 3D', 'physics'],
+      ['مشهد 3D', 'scene3d'],
+    ],
+    2: [['شاشات', 'screens'], ['واجهة لعبة', 'gameui'], ['قوالب', 'wizard']],
+    3: [['Python', 'python'], ['الإعدادات', 'settings']],
   };
 
   void _openInEditor(String name) {
@@ -77,23 +85,22 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _page() {
-    switch (_tab) {
-      case 0:
-        return HomePage(key: homeKey, onOpen: _openInEditor);
-      case 1:
-        switch (_sub) {
-          case 0: return const GamePage();
-          case 1: return const GamePage();
-          case 2: return const GamePage();
-          case 3: return const Match3Page();
-          case 4: return const PuzzlePage();
-          case 5: return const ThreePage();
-          default: return const ThreePage();
-        }
-      case 2:
-        return const DesignPage();
-      default:
-        return _sub == 0 ? PythonTestPage(key: editorKey) : const _SettingsPage();
+    final id = _subs[_tab]![_sub][1];
+    switch (id) {
+      case 'home': return HomePage(key: homeKey, onOpen: _openInEditor);
+      case 'memory': return const GamePage(template: 'memory');
+      case 'coins': return const GamePage(template: 'coins');
+      case 'dodge': return const GamePage(template: 'dodge');
+      case 'match3': return const Match3Page();
+      case 'puzzle': return const PuzzlePage();
+      case 'physics':
+      case 'scene3d': return const ThreePage();
+      case 'screens':
+      case 'gameui':
+      case 'wizard': return const DesignPage();
+      case 'python': return PythonTestPage(key: editorKey);
+      case 'settings': return const _SettingsPage();
+      default: return const SizedBox.shrink();
     }
   }
 
@@ -121,7 +128,7 @@ class _HomeShellState extends State<HomeShell> {
                   children: List.generate(subs.length, (i) => Padding(
                     padding: const EdgeInsets.only(left: 6),
                     child: ChoiceChip(
-                      label: Text(subs[i]),
+                      label: Text(subs[i][0]),
                       selected: _sub == i,
                       onSelected: (_) => setState(() => _sub = i),
                     ),
