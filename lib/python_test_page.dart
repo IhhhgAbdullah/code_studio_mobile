@@ -126,7 +126,7 @@ const String _pyHtml = r'''
   function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   function highlight(src) {
-    const re = /(#[^\\n]*)|("(?:\\\\.|[^"\\\\\\n])*"|'(?:\\\\.|[^'\\\\\\n])*')|\\b(\\d+(?:\\.\\d+)?)\\b|([A-Za-z_]\\w*)/g;
+    const re = /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)/g;
     let out = '', last = 0, m;
     while ((m = re.exec(src)) !== null) {
       out += esc(src.slice(last, m.index));
@@ -140,18 +140,18 @@ const String _pyHtml = r'''
       else out += esc(t);
     }
     out += esc(src.slice(last));
-    return out + '\\n';
+    return out + '\n';
   }
 
   function updateGutter() {
     const src = getCode();
-    const n = src.split('\\n').length - (src.endsWith('\\n') ? 1 : 0);
+    const n = src.split('\n').length - (src.endsWith('\n') ? 1 : 0);
     const lines = [];
     for (let i = 1; i <= Math.max(1, n); i++) lines.push(i);
-    document.getElementById('gutter').textContent = lines.join('\\n');
+    document.getElementById('gutter').textContent = lines.join('\n');
   }
 
-  function getCode() { return document.getElementById('code').innerText.replace(/\\u00a0/g, ' '); }
+  function getCode() { return document.getElementById('code').innerText.replace(/\u00a0/g, ' '); }
   function setCode(src) {
     document.getElementById('code').innerHTML = highlight(src);
     updateGutter();
@@ -164,7 +164,7 @@ const String _pyHtml = r'''
   function curProject() { return localStorage.getItem(CURKEY) || ''; }
 
   function cleanPath(raw) {
-    return (raw || '').trim().replace(/\\\\/g, '/').replace(/\\/+/g, '/')
+    return (raw || '').trim().replace(/\\/g, '/').replace(/\/+/g, '/')
       .split('/').filter(p => p && p !== '.' && p !== '..').join('/');
   }
   function fullName(raw) {
@@ -409,14 +409,14 @@ const String _pyHtml = r'''
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.isCollapsed) return;
     const pos = getCaret(codeEl);
-    const src = codeEl.innerText.replace(/\\u00a0/g, ' ');
+    const src = codeEl.innerText.replace(/\u00a0/g, ' ');
     if (e.key === 'Enter') {
       e.preventDefault();
-      const lineStart = src.lastIndexOf('\\n', pos - 1) + 1;
+      const lineStart = src.lastIndexOf('\n', pos - 1) + 1;
       const line = src.slice(lineStart, pos);
-      const indent = line.match(/^\\s*/)[0];
+      const indent = line.match(/^\s*/)[0];
       const extra = line.trimEnd().endsWith(':') ? '    ' : '';
-      document.execCommand('insertText', false, '\\n' + indent + extra);
+      document.execCommand('insertText', false, '\n' + indent + extra);
       updateGutter();
       return;
     }
@@ -435,7 +435,7 @@ const String _pyHtml = r'''
     clearTimeout(timer);
     timer = setTimeout(() => {
       const pos = getCaret(codeEl);
-      const src = codeEl.innerText.replace(/\\u00a0/g, ' ');
+      const src = codeEl.innerText.replace(/\u00a0/g, ' ');
       codeEl.innerHTML = highlight(src);
       setCaret(codeEl, pos);
     }, 250);
@@ -455,10 +455,10 @@ const String _pyHtml = r'''
   let termActive = false;
   let termBlock = [];
 
-  function log(s) { document.getElementById('out').textContent += s + '\\n'; }
+  function log(s) { document.getElementById('out').textContent += s + '\n'; }
   function tlog(s) {
     const t = document.getElementById('term-out');
-    t.textContent += s + '\\n';
+    t.textContent += s + '\n';
     t.scrollTop = t.scrollHeight;
   }
   function showErr(title, detail) {
@@ -475,7 +475,7 @@ const String _pyHtml = r'''
       const result = await pyodide.runPythonAsync(src);
       if (result !== undefined && result !== null) tlog(String(result));
     } catch (e) {
-      const lines = String(e).trim().split('\\n');
+      const lines = String(e).trim().split('\n');
       tlog(lines[lines.length - 1]);
     } finally { termActive = false; }
   }
@@ -497,7 +497,7 @@ const String _pyHtml = r'''
       return;
     }
     if (!line.trim()) {
-      const block = termBlock.join('\\n') + '\\n';
+      const block = termBlock.join('\n') + '\n';
       termBlock = [];
       input.placeholder = 'اكتب سطر Python ثم Enter';
       tlog('[تنفيذ الكتلة]');
@@ -537,7 +537,7 @@ const String _pyHtml = r'''
     btn.textContent = 'تشغيل';
     btn.onclick = runCode;
     document.getElementById('out').textContent = 'Python جاهز (' + source + ')';
-    document.getElementById('term-out').textContent = 'طرفية Python جاهزة\\n';
+    document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
   async function runCode() {
@@ -546,12 +546,12 @@ const String _pyHtml = r'''
       await pyodide.runPythonAsync(getCode());
     } catch (e) {
       const text = String(e);
-      const lines = text.trim().split('\\n');
-      const lineMatch = text.match(/line (\\d+)/);
+      const lines = text.trim().split('\n');
+      const lineMatch = text.match(/line (\d+)/);
       const lineNo = lineMatch ? lineMatch[1] : null;
       const title = lineNo ? 'خطأ في Python - السطر ' + lineNo : 'خطأ في Python';
       const last = lines[lines.length - 1];
-      showErr(title, last + '\\n\\nالنص الأصلي:\\n' + text);
+      showErr(title, last + '\n\nالنص الأصلي:\n' + text);
       if (lineNo) tlog('خطأ في السطر ' + lineNo + ': ' + last);
     }
   }
@@ -572,7 +572,7 @@ const String _pyHtml = r'''
     if (e.key === 'Enter') { e.preventDefault(); termRun(); }
   });
 
-  setCode('name = "Abdullah"\\nfor i in range(3):\\n    print("مرحباً", name, i + 1)\\n');
+  setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
   refreshProjects();
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
