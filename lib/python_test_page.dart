@@ -22,7 +22,7 @@ const String _pyHtml = r'''
   #gutter {
     flex: 0 0 34px; padding: 10px 6px 10px 0; text-align: right; color: #6A8A9A;
     font-family: monospace; font-size: 15px; line-height: 1.45; user-select: none; background: #081A33;
-    white-space: pre;
+    white-space: pre; overflow: hidden;
   }
   #code {
     flex: 1; min-width: 0; font-family: monospace; font-size: 15px; line-height: 1.45;
@@ -57,6 +57,7 @@ const String _pyHtml = r'''
   .str { color: #C3E88D; }
   .num { color: #F78C6C; }
   .com { color: #6A8A9A; font-style: italic; }
+  .errnum { color: #ff6b6b; font-weight: bold; background: #3a1414; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -153,12 +154,17 @@ const String _pyHtml = r'''
     return out + '\n';
   }
 
+  // رقم السطر المعطوب (0 = لا يوجد خطأ)
+  let errorLine = 0;
+
   function updateGutter() {
     const src = getCode();
     const n = src.split('\n').length - (src.endsWith('\n') ? 1 : 0);
     const lines = [];
-    for (let i = 1; i <= Math.max(1, n); i++) lines.push(i);
-    document.getElementById('gutter').textContent = lines.join('\n');
+    for (let i = 1; i <= Math.max(1, n); i++) {
+      lines.push(i === errorLine ? '<span class="errnum">' + i + '</span>' : String(i));
+    }
+    document.getElementById('gutter').innerHTML = lines.join('\n');
   }
 
   function getCode() { return document.getElementById('code').innerText.replace(/\u00a0/g, ' '); }
@@ -480,7 +486,6 @@ const String _pyHtml = r'''
     out.appendChild(t); out.appendChild(d);
   }
 
-  // input(): يأخذ السطر التالي من حقل المدخلات
   function readStdin() {
     if (stdinQueue.length > 0) {
       const v = stdinQueue.shift();
@@ -568,7 +573,10 @@ const String _pyHtml = r'''
     document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
+  // رقم السطر يُؤخذ من آخر إشارة إلى كود المستخدم (<exec>)
   async function runCode() {
+    errorLine = 0;
+    updateGutter();
     document.getElementById('out').textContent = '';
     loadStdinFromBox();
     try {
@@ -582,6 +590,8 @@ const String _pyHtml = r'''
         const m = frames[frames.length - 1].match(/line (\d+)/);
         lineNo = m ? m[1] : null;
       }
+      errorLine = lineNo ? Number(lineNo) : 0;
+      updateGutter();
       const last = lines[lines.length - 1];
       const title = lineNo ? 'خطأ في Python - السطر ' + lineNo : 'خطأ في Python';
       showErr(title, last + '\n\nالنص الأصلي:\n' + text);
