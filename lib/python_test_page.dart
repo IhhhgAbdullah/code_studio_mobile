@@ -18,11 +18,16 @@ const String _pyHtml = r'''
     width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 10px;
     border: 1px solid #D4AF37; background: #0A1F3D; color: #fff; font-size: 15px;
   }
+  .editor { display: flex; direction: ltr; background: #0A1F3D; border-radius: 10px; overflow: hidden; min-height: 170px; }
+  #gutter {
+    flex: 0 0 34px; padding: 10px 6px 10px 0; text-align: right; color: #6A8A9A;
+    font-family: monospace; font-size: 15px; line-height: 1.45; user-select: none; background: #081A33;
+    white-space: pre;
+  }
   #code {
-    width: 100%; min-height: 170px; font-family: monospace; font-size: 15px;
-    direction: ltr; text-align: left; background: #0A1F3D; color: #e6edf7;
-    border-radius: 10px; padding: 10px; white-space: pre-wrap; word-break: break-word;
-    outline: none; overflow-y: auto;
+    flex: 1; min-width: 0; font-family: monospace; font-size: 15px; line-height: 1.45;
+    direction: ltr; text-align: left; color: #e6edf7; padding: 10px;
+    white-space: pre-wrap; word-break: break-word; outline: none; overflow-y: auto;
   }
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; }
@@ -68,7 +73,10 @@ const String _pyHtml = r'''
 <div class="card">
   <div class="card-title">الكود</div>
   <input id="fname" value="main.py" placeholder="اسم الملف (مثال: app.py)">
-  <div id="code" contenteditable="true" spellcheck="false"></div>
+  <div class="editor">
+    <div id="gutter"></div>
+    <div id="code" contenteditable="true" spellcheck="false"></div>
+  </div>
   <div class="row" style="margin-top:8px">
     <button id="save" class="alt">حفظ</button>
     <button id="open" class="alt">فتح</button>
@@ -137,8 +145,20 @@ const String _pyHtml = r'''
     return out + '\\n';
   }
 
+  // عمود أرقام الأسطر: يُحسب من عدد الأسطر فقط
+  function updateGutter() {
+    const src = getCode();
+    const n = src.split('\\n').length - (src.endsWith('\\n') ? 1 : 0);
+    const lines = [];
+    for (let i = 1; i <= Math.max(1, n); i++) lines.push(i);
+    document.getElementById('gutter').textContent = lines.join('\\n');
+  }
+
   function getCode() { return document.getElementById('code').innerText.replace(/\\u00a0/g, ' '); }
-  function setCode(src) { document.getElementById('code').innerHTML = highlight(src); }
+  function setCode(src) {
+    document.getElementById('code').innerHTML = highlight(src);
+    updateGutter();
+  }
 
   function getFiles() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
   function getFolders() { try { return JSON.parse(localStorage.getItem(FKEY) || '[]'); } catch (e) { return []; } }
@@ -150,7 +170,6 @@ const String _pyHtml = r'''
     return (raw || '').trim().replace(/\\\\/g, '/').replace(/\\/+/g, '/')
       .split('/').filter(p => p && p !== '.' && p !== '..').join('/');
   }
-  // اسم الملف داخل المشروع الحالي
   function fullName(raw) {
     let n = cleanPath(raw);
     if (!n) n = 'main.py';
@@ -233,7 +252,6 @@ const String _pyHtml = r'''
     names.forEach(n => { if (n.includes('/')) folders.add(n.slice(0, n.lastIndexOf('/'))); });
     sel.innerHTML = '';
 
-    // نعرض الملفات التابعة للمشروع الحالي فقط داخل مجموعة، ثم الجذر والمجلدات
     const scope = cur ? names.filter(n => n.startsWith(cur + '/')) : names.filter(n => !n.includes('/'));
     const rootNames = scope.filter(n => {
       const rel = cur ? n.slice(cur.length + 1) : n;
@@ -402,6 +420,7 @@ const String _pyHtml = r'''
       const indent = line.match(/^\\s*/)[0];
       const extra = line.trimEnd().endsWith(':') ? '    ' : '';
       document.execCommand('insertText', false, '\\n' + indent + extra);
+      updateGutter();
       return;
     }
     if (CLOSERS.includes(e.key) && src[pos] === e.key) {
@@ -411,9 +430,11 @@ const String _pyHtml = r'''
       e.preventDefault();
       document.execCommand('insertText', false, e.key + PAIRS[e.key]);
       sel.modify('move', 'backward', 'character');
+      updateGutter();
     }
   });
   codeEl.addEventListener('input', () => {
+    updateGutter();
     clearTimeout(timer);
     timer = setTimeout(() => {
       const pos = getCaret(codeEl);
@@ -426,6 +447,10 @@ const String _pyHtml = r'''
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text');
     document.execCommand('insertText', false, text);
+    updateGutter();
+  });
+  codeEl.addEventListener('scroll', () => {
+    document.getElementById('gutter').scrollTop = codeEl.scrollTop;
   });
 
   // ===== Python =====
