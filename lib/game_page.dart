@@ -24,6 +24,7 @@ const sfx = {
   flip: () => beep(420, 0.05, 'triangle', 0.05),
   match: () => { beep(660, 0.1, 'sine', 0.08); setTimeout(() => beep(880, 0.12, 'sine', 0.08), 90); },
   miss: () => beep(180, 0.15, 'sawtooth', 0.05),
+  level: () => { beep(600, 0.1, 'triangle', 0.08); setTimeout(() => beep(900, 0.15, 'triangle', 0.08), 110); },
   win: () => { beep(523, 0.12, 'triangle', 0.1); setTimeout(() => beep(659, 0.12, 'triangle', 0.1), 120); setTimeout(() => beep(784, 0.25, 'triangle', 0.1), 240); },
   lose: () => { beep(330, 0.2, 'sawtooth', 0.07); setTimeout(() => beep(220, 0.35, 'sawtooth', 0.07), 200); }
 };
@@ -101,27 +102,45 @@ function draw(ctx) {
 ''';
 
 const String _dodgeJs = r'''
-let player, obstacles, score, lives, spawnT, timeLeft, state, best;
+let player, obstacles, score, lives, spawnT, timeLeft, state, best, level, levelT, levelMsg;
 best = Number(localStorage.getItem('cs_dodge_best') || 0);
 
 function setup() {
   player = { x: 180, y: 420, r: 16, speed: 260 };
-  obstacles = []; score = 0; lives = 3; spawnT = 0; timeLeft = 60; state = 'play';
+  obstacles = []; score = 0; lives = 3; spawnT = 0; timeLeft = 75;
+  state = 'play'; level = 1; levelT = 15; levelMsg = 0;
 }
 
 function update(dt) {
   if (state !== 'play') return;
   timeLeft -= dt;
   if (timeLeft <= 0) { state = 'over'; sfx.lose(); saveBest(); return; }
+
+  // الانتقال بين المراحل كل 15 ثانية
+  levelT -= dt;
+  if (levelT <= 0) {
+    level++;
+    levelT = 15;
+    score += 5;
+    levelMsg = 1.5;
+    sfx.level();
+  }
+  if (levelMsg > 0) levelMsg -= dt;
+
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
   if (touch.down) player.x += (touch.x - player.x) * 0.2;
   player.x = Math.max(player.r, Math.min(360 - player.r, player.x));
+
+  // كل مرحلة تزيد معدل ظهور العوائق وسرعتها
   spawnT -= dt;
   if (spawnT <= 0) {
-    spawnT = Math.max(0.35, 0.9 - score * 0.01);
-    obstacles.push({ x: 20 + Math.random() * 320, y: -20, r: 14 + Math.random() * 10, v: 140 + score * 2 });
+    spawnT = Math.max(0.3, 0.95 - level * 0.1);
+    const count = level >= 3 ? 2 : 1;
+    for (let k = 0; k < count; k++) {
+      obstacles.push({ x: 20 + Math.random() * 320, y: -20, r: 14 + Math.random() * 10, v: 130 + level * 35 });
+    }
   }
   for (const o of obstacles) o.y += o.v * dt;
   obstacles = obstacles.filter(o => {
@@ -147,15 +166,20 @@ function draw(ctx) {
   ctx.beginPath(); ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.font = '15px sans-serif';
   ctx.fillText('النقاط: ' + score, 8, 22);
-  ctx.fillText('الحياة: ' + '♥'.repeat(Math.max(0, lives)), 8, 44);
+  ctx.fillText('المرحلة: ' + level, 130, 22);
   ctx.fillText('الوقت: ' + Math.ceil(Math.max(0, timeLeft)), 250, 22);
+  ctx.fillText('الحياة: ' + '♥'.repeat(Math.max(0, lives)), 8, 44);
   ctx.fillText('أفضل: ' + best, 250, 44);
+  if (levelMsg > 0 && state === 'play') {
+    ctx.fillStyle = '#D4AF37'; ctx.font = 'bold 22px sans-serif';
+    ctx.fillText('المرحلة ' + level, 120, 240);
+  }
   if (state === 'over') {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, 360, 480);
     ctx.fillStyle = '#D4AF37'; ctx.font = 'bold 24px sans-serif';
     ctx.fillText('انتهت اللعبة', 95, 220);
     ctx.font = '16px sans-serif';
-    ctx.fillText('نتيجتك: ' + score, 130, 255);
+    ctx.fillText('نتيجتك: ' + score + ' (المرحلة ' + level + ')', 80, 255);
     ctx.fillText('اضغط تشغيل للعب مرة أخرى', 40, 290);
   }
 }
