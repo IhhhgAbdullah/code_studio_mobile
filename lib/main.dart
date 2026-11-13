@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'dart_page.dart';
 import 'design_page.dart';
 import 'game_page.dart';
 import 'home_page.dart';
@@ -76,7 +77,11 @@ class _HomeShellState extends State<HomeShell> {
       ['مشهد 3D', 'scene3d'],
     ],
     2: [['شاشات', 'screens'], ['واجهة لعبة', 'gameui'], ['قوالب', 'wizard']],
-    3: [['Python', 'python'], ['الإعدادات', 'settings']],
+    3: [
+      ['Python', 'python'],
+      ['Dart', 'dart'],
+      ['الإعدادات', 'settings'],
+    ],
   };
 
   void _openInEditor(String name) {
@@ -99,6 +104,7 @@ class _HomeShellState extends State<HomeShell> {
       case 'gameui':
       case 'wizard': return const DesignPage();
       case 'python': return PythonTestPage(key: editorKey);
+      case 'dart': return const DartPage();
       case 'settings': return const _SettingsPage();
       default: return const SizedBox.shrink();
     }
