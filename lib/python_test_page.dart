@@ -540,6 +540,7 @@ const String _pyHtml = r'''
     document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
+  // رقم السطر يُؤخذ من آخر إشارة إلى كود المستخدم (<exec>)، لا من سطور Pyodide الداخلية
   async function runCode() {
     document.getElementById('out').textContent = '';
     try {
@@ -547,10 +548,14 @@ const String _pyHtml = r'''
     } catch (e) {
       const text = String(e);
       const lines = text.trim().split('\n');
-      const lineMatch = text.match(/line (\d+)/);
-      const lineNo = lineMatch ? lineMatch[1] : null;
-      const title = lineNo ? 'خطأ في Python - السطر ' + lineNo : 'خطأ في Python';
+      const frames = text.match(/File "<exec>", line (\d+)/g);
+      let lineNo = null;
+      if (frames && frames.length) {
+        const m = frames[frames.length - 1].match(/line (\d+)/);
+        lineNo = m ? m[1] : null;
+      }
       const last = lines[lines.length - 1];
+      const title = lineNo ? 'خطأ في Python - السطر ' + lineNo : 'خطأ في Python';
       showErr(title, last + '\n\nالنص الأصلي:\n' + text);
       if (lineNo) tlog('خطأ في السطر ' + lineNo + ': ' + last);
     }
