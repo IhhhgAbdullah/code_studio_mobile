@@ -8,12 +8,13 @@ const String _pyHtml = r'''
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="file:///android_asset/flutter_assets/assets/pyodide/pyodide.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: sans-serif; margin: 0; padding: 12px; background: #0D2B52; color: #fff; }
   .card { background: #132F5A; border: 1px solid #D4AF37; border-radius: 14px; padding: 12px; margin-bottom: 12px; }
   .card-title { color: #D4AF37; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
-  input, select, textarea {
+  input, select {
     width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 10px;
     border: 1px solid #D4AF37; background: #0A1F3D; color: #fff; font-size: 15px;
   }
@@ -40,18 +41,33 @@ const String _pyHtml = r'''
   #term-in { direction: ltr; font-family: monospace; }
   #term-out { min-height: 120px; max-height: 260px; overflow-y: auto; }
   .err { color: #ff6b6b; font-weight: bold; }
-  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; }
+  .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; }
   .kw { color: #C792EA; font-weight: bold; }
   .bi { color: #82AAFF; }
   .str { color: #C3E88D; }
   .num { color: #F78C6C; }
   .com { color: #6A8A9A; font-style: italic; }
+  .proj { background: #0A1F3D; border: 1px solid #2A4A7A; border-radius: 10px; padding: 8px; margin-top: 6px; }
+  .proj.cur { border-color: #D4AF37; }
 </style>
 </head>
 <body>
 <div class="card">
+  <div class="card-title">المشاريع</div>
+  <div class="row">
+    <input id="pname" placeholder="اسم المشروع الجديد">
+    <button id="pnew" class="alt" style="flex:0 0 auto;width:auto;padding:10px 14px">إنشاء</button>
+  </div>
+  <select id="projSel"></select>
+  <div class="row">
+    <button id="pdel" class="danger">حذف المشروع</button>
+    <button id="pcur" class="alt">تحديد كمشروع حالي</button>
+  </div>
+  <div id="pinfo" class="msg"></div>
+</div>
+<div class="card">
   <div class="card-title">الكود</div>
-  <input id="fname" value="main.py" placeholder="اسم الملف أو المسار (مثال: projects/app.py)">
+  <input id="fname" value="main.py" placeholder="اسم الملف (مثال: app.py)">
   <div id="code" contenteditable="true" spellcheck="false"></div>
   <div class="row" style="margin-top:8px">
     <button id="save" class="alt">حفظ</button>
@@ -67,7 +83,7 @@ const String _pyHtml = r'''
   <div class="row" style="margin-top:8px">
     <button id="ren" class="alt">إعادة تسمية (نقل الكود)</button>
   </div>
-  <input id="fold" placeholder="اسم المجلد الجديد (مثال: projects)" style="margin-top:8px">
+  <input id="fold" placeholder="اسم المجلد الجديد (مثال: src)" style="margin-top:8px">
   <div class="row" style="margin-top:8px">
     <button id="mkdir" class="alt">مجلد جديد</button>
   </div>
@@ -75,7 +91,7 @@ const String _pyHtml = r'''
     <button id="exp" class="alt">تصدير الكل</button>
     <button id="imp" class="alt">استيراد</button>
   </div>
-  <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا"></textarea>
+  <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا" style="width:100%;margin-top:8px;background:#0A1F3D;color:#fff;border:1px solid #D4AF37;border-radius:10px;padding:8px;direction:ltr"></textarea>
   <div id="msg" class="msg"></div>
 </div>
 <div class="card">
@@ -94,21 +110,17 @@ const String _pyHtml = r'''
 <script>
   const KEY = 'cs_files';
   const FKEY = 'cs_folders';
+  const PKEY = 'cs_projects';
+  const CURKEY = 'cs_cur_project';
   const KEYWORDS = ['False','None','True','and','as','assert','async','await','break','class','continue','def','del','elif','else','except','finally','for','from','global','if','import','in','is','lambda','nonlocal','not','or','pass','raise','return','try','while','with','yield','match','case'];
   const BUILTINS = ['print','len','range','int','str','float','list','dict','set','tuple','sum','min','max','abs','sorted','enumerate','zip','map','filter','open','type','isinstance','input'];
   const PAIRS = { '(': ')', '[': ']', '{': '}' };
   const CLOSERS = [')', ']', '}'];
 
-  // مسارات Pyodide: أولاً من ملفات التطبيق، ثم الإنترنت كاحتياط
-  const LOCAL_BASE = 'file:///android_asset/flutter_assets/assets/pyodide/';
-  const CDN_BASE = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/';
-
-  function esc(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   function highlight(src) {
-    const re = /(#[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(\d+(?:\.\d+)?)\b|([A-Za-z_]\w*)/g;
+    const re = /(#[^\\n]*)|("(?:\\\\.|[^"\\\\\\n])*"|'(?:\\\\.|[^'\\\\\\n])*')|\\b(\\d+(?:\\.\\d+)?)\\b|([A-Za-z_]\\w*)/g;
     let out = '', last = 0, m;
     while ((m = re.exec(src)) !== null) {
       out += esc(src.slice(last, m.index));
@@ -122,95 +134,141 @@ const String _pyHtml = r'''
       else out += esc(t);
     }
     out += esc(src.slice(last));
-    return out + '\n';
+    return out + '\\n';
   }
 
-  function getCode() {
-    return document.getElementById('code').innerText.replace(/\u00a0/g, ' ');
-  }
+  function getCode() { return document.getElementById('code').innerText.replace(/\\u00a0/g, ' '); }
+  function setCode(src) { document.getElementById('code').innerHTML = highlight(src); }
 
-  function setCode(src) {
-    document.getElementById('code').innerHTML = highlight(src);
-  }
-
-  function getFiles() {
-    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); }
-    catch (e) { return {}; }
-  }
-
-  function getFolders() {
-    try { return JSON.parse(localStorage.getItem(FKEY) || '[]'); }
-    catch (e) { return []; }
-  }
+  function getFiles() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+  function getFolders() { try { return JSON.parse(localStorage.getItem(FKEY) || '[]'); } catch (e) { return []; } }
+  function getProjects() { try { return JSON.parse(localStorage.getItem(PKEY) || '[]'); } catch (e) { return []; } }
+  function setProjects(list) { localStorage.setItem(PKEY, JSON.stringify(list)); }
+  function curProject() { return localStorage.getItem(CURKEY) || ''; }
 
   function cleanPath(raw) {
-    return (raw || '').trim().replace(/\\/g, '/').replace(/\/+/g, '/')
+    return (raw || '').trim().replace(/\\\\/g, '/').replace(/\\/+/g, '/')
       .split('/').filter(p => p && p !== '.' && p !== '..').join('/');
   }
-
-  function cleanName(raw) {
+  // اسم الملف داخل المشروع الحالي
+  function fullName(raw) {
     let n = cleanPath(raw);
     if (!n) n = 'main.py';
     if (!n.endsWith('.py')) n += '.py';
-    return n;
+    const p = curProject();
+    return p ? p + '/' + n : n;
+  }
+  function shownName(full) {
+    const p = curProject();
+    return p && full.startsWith(p + '/') ? full.slice(p.length + 1) : full;
   }
 
-  function opt(n, label) {
+  function opt(v, label) {
     const o = document.createElement('option');
-    o.value = n;
-    o.textContent = label || n;
+    o.value = v; o.textContent = label || v;
     return o;
   }
 
+  function msg(t) { document.getElementById('msg').textContent = t; }
+
+  // ===== المشاريع =====
+  function refreshProjects() {
+    const sel = document.getElementById('projSel');
+    const list = getProjects();
+    const cur = curProject();
+    sel.innerHTML = '';
+    sel.appendChild(opt('', 'بدون مشروع (الجذر)'));
+    list.forEach(p => sel.appendChild(opt(p, p)));
+    sel.value = cur;
+    document.getElementById('pinfo').textContent = cur
+      ? 'المشروع الحالي: ' + cur + ' (الملفات الجديدة تُحفظ داخله)'
+      : 'لا يوجد مشروع حالي، الملفات تُحفظ في الجذر';
+  }
+
+  function createProject() {
+    const name = cleanPath(document.getElementById('pname').value);
+    if (!name) { msg('اكتب اسم المشروع أولاً'); return; }
+    if (name.includes('/')) { msg('اسم المشروع بدون مجلدات'); return; }
+    const list = getProjects();
+    if (list.includes(name)) { msg('يوجد مشروع بهذا الاسم'); return; }
+    list.push(name);
+    setProjects(list);
+    localStorage.setItem(CURKEY, name);
+    document.getElementById('pname').value = '';
+    refreshProjects();
+    refreshList();
+    msg('تم إنشاء المشروع وتحديده: ' + name);
+  }
+
+  function setCurrent() {
+    const sel = document.getElementById('projSel').value;
+    localStorage.setItem(CURKEY, sel);
+    refreshProjects();
+    refreshList();
+    msg(sel ? 'المشروع الحالي: ' + sel : 'تم اختيار الجذر');
+  }
+
+  function deleteProject() {
+    const name = document.getElementById('projSel').value;
+    if (!name) { msg('اختر مشروعاً لحذفه'); return; }
+    const files = getFiles();
+    Object.keys(files).forEach(k => { if (k.startsWith(name + '/')) delete files[k]; });
+    localStorage.setItem(KEY, JSON.stringify(files));
+    setProjects(getProjects().filter(p => p !== name));
+    const folders = getFolders().filter(f => f !== name && !f.startsWith(name + '/'));
+    localStorage.setItem(FKEY, JSON.stringify(folders));
+    if (curProject() === name) localStorage.setItem(CURKEY, '');
+    refreshProjects();
+    refreshList();
+    msg('تم حذف المشروع وملفاته: ' + name);
+  }
+
+  // ===== الملفات =====
   function refreshList(selected) {
     const sel = document.getElementById('files');
     const files = getFiles();
+    const cur = curProject();
     const names = Object.keys(files);
     const folders = new Set(getFolders());
-    names.forEach(n => {
-      if (n.includes('/')) folders.add(n.slice(0, n.lastIndexOf('/')));
-    });
+    names.forEach(n => { if (n.includes('/')) folders.add(n.slice(0, n.lastIndexOf('/'))); });
     sel.innerHTML = '';
 
-    const rootNames = names.filter(n => !n.includes('/')).sort();
+    // نعرض الملفات التابعة للمشروع الحالي فقط داخل مجموعة، ثم الجذر والمجلدات
+    const scope = cur ? names.filter(n => n.startsWith(cur + '/')) : names.filter(n => !n.includes('/'));
+    const rootNames = scope.filter(n => {
+      const rel = cur ? n.slice(cur.length + 1) : n;
+      return !rel.includes('/');
+    }).sort();
     if (rootNames.length) {
       const g = document.createElement('optgroup');
-      g.label = 'الجذر';
-      rootNames.forEach(n => g.appendChild(opt(n)));
+      g.label = cur ? 'المشروع: ' + cur : 'الجذر';
+      rootNames.forEach(n => g.appendChild(opt(n, shownName(n))));
       sel.appendChild(g);
     }
 
-    [...folders].sort().forEach(f => {
+    const base = cur ? cur + '/' : '';
+    [...folders].filter(f => (cur ? f.startsWith(cur + '/') : !f.includes('/')) && f !== cur).sort().forEach(f => {
       const g = document.createElement('optgroup');
-      g.label = f + '/';
+      g.label = f.slice(base.length) + '/';
       const inside = names.filter(n => n.startsWith(f + '/')).sort();
-      if (inside.length) {
-        inside.forEach(n => g.appendChild(opt(n, n.slice(f.length + 1))));
-      } else {
-        g.appendChild(opt('folder:' + f, '(مجلد فارغ، اضغط حذف لإزالته)'));
-      }
+      if (inside.length) inside.forEach(n => g.appendChild(opt(n, n.slice(f.length + 1))));
+      else g.appendChild(opt('folder:' + f, '(مجلد فارغ، اضغط حذف لإزالته)'));
       sel.appendChild(g);
     });
 
     if (selected) sel.value = selected;
   }
 
-  function msg(t) {
-    document.getElementById('msg').textContent = t;
-  }
-
   function saveFile() {
-    const name = cleanName(document.getElementById('fname').value);
+    const name = fullName(document.getElementById('fname').value);
     const files = getFiles();
     files[name] = getCode();
     try {
       localStorage.setItem(KEY, JSON.stringify(files));
-      document.getElementById('fname').value = name;
+      document.getElementById('fname').value = shownName(name);
       refreshList(name);
-      msg('تم الحفظ: ' + name);
-    } catch (e) {
-      msg('تعذّر الحفظ: ' + e);
-    }
+      msg('تم الحفظ: ' + shownName(name));
+    } catch (e) { msg('تعذّر الحفظ: ' + e); }
   }
 
   function openFile() {
@@ -219,8 +277,8 @@ const String _pyHtml = r'''
     if (name.startsWith('folder:')) { msg('هذا مجلد، اختر ملفاً لفتحه'); return; }
     if (!name || !(name in files)) { msg('لا يوجد ملف محفوظ لفتحه'); return; }
     setCode(files[name]);
-    document.getElementById('fname').value = name;
-    msg('تم فتح: ' + name);
+    document.getElementById('fname').value = shownName(name);
+    msg('تم فتح: ' + shownName(name));
   }
 
   function newFile() {
@@ -235,48 +293,48 @@ const String _pyHtml = r'''
     const files = getFiles();
     if (sel.startsWith('folder:')) {
       const f = sel.slice('folder:'.length);
-      const list = getFolders().filter(x => x !== f);
-      localStorage.setItem(FKEY, JSON.stringify(list));
+      localStorage.setItem(FKEY, JSON.stringify(getFolders().filter(x => x !== f)));
       refreshList();
-      msg('تم حذف المجلد: ' + f + '/');
+      msg('تم حذف المجلد');
       return;
     }
     if (!sel || !(sel in files)) { msg('لا يوجد ملف محدد للحذف'); return; }
     delete files[sel];
     localStorage.setItem(KEY, JSON.stringify(files));
     refreshList();
-    msg('تم حذف: ' + sel);
+    msg('تم حذف: ' + shownName(sel));
   }
 
   function renameFile() {
     const oldName = document.getElementById('files').value;
     const files = getFiles();
     if (!oldName || oldName.startsWith('folder:') || !(oldName in files)) { msg('اختر ملفاً من القائمة أولاً'); return; }
-    const newName = cleanName(document.getElementById('fname').value);
-    if (newName === oldName) { msg('الاسم الجديد مطابق للقديم، غيّر الاسم في الحقل أولاً'); return; }
-    if (newName in files) { msg('يوجد ملف بهذا الاسم: ' + newName); return; }
+    const newName = fullName(document.getElementById('fname').value);
+    if (newName === oldName) { msg('الاسم الجديد مطابق للقديم'); return; }
+    if (newName in files) { msg('يوجد ملف بهذا الاسم'); return; }
     files[newName] = getCode();
     delete files[oldName];
     localStorage.setItem(KEY, JSON.stringify(files));
-    document.getElementById('fname').value = newName;
+    document.getElementById('fname').value = shownName(newName);
     refreshList(newName);
-    msg('تم النقل إلى: ' + newName);
+    msg('تم النقل إلى: ' + shownName(newName));
   }
 
   function newFolder() {
-    const f = cleanPath(document.getElementById('fold').value);
-    if (!f) { msg('اكتب اسم المجلد أولاً'); return; }
+    const f0 = cleanPath(document.getElementById('fold').value);
+    if (!f0) { msg('اكتب اسم المجلد أولاً'); return; }
+    const f = curProject() ? curProject() + '/' + f0 : f0;
     const list = getFolders();
     if (!list.includes(f)) list.push(f);
     localStorage.setItem(FKEY, JSON.stringify(list));
     document.getElementById('fold').value = '';
     refreshList();
-    msg('تم إنشاء المجلد: ' + f + '/');
+    msg('تم إنشاء المجلد: ' + f0);
   }
 
   function exportAll() {
-    const data = { app: 'code_studio_mobile', version: 1,
-      folders: getFolders(), files: getFiles() };
+    const data = { app: 'code_studio_mobile', version: 2,
+      projects: getProjects(), folders: getFolders(), files: getFiles() };
     document.getElementById('xdata').value = JSON.stringify(data, null, 2);
     msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
@@ -285,37 +343,27 @@ const String _pyHtml = r'''
     const raw = document.getElementById('xdata').value.trim();
     let data;
     try { data = JSON.parse(raw); }
-    catch (e) { msg('النص ليس JSON صالحاً. الصق نص التصدير كاملاً.'); return; }
+    catch (e) { msg('النص ليس JSON صالحاً.'); return; }
     if (!data || data.app !== 'code_studio_mobile' || typeof data.files !== 'object') {
-      msg('هذا النص ليس تصديراً من التطبيق');
-      return;
+      msg('هذا النص ليس تصديراً من التطبيق'); return;
     }
     const files = getFiles();
     const names = Object.keys(data.files);
-    names.forEach(n => {
-      const clean = cleanPath(n);
-      if (clean) files[clean] = String(data.files[n]);
-    });
-    try {
-      localStorage.setItem(KEY, JSON.stringify(files));
-    } catch (e) {
-      msg('تعذّر الاستيراد: ' + e);
-      return;
-    }
+    names.forEach(n => { const c = cleanPath(n); if (c) files[c] = String(data.files[n]); });
+    try { localStorage.setItem(KEY, JSON.stringify(files)); }
+    catch (e) { msg('تعذّر الاستيراد: ' + e); return; }
     const folders = new Set(getFolders());
-    (data.folders || []).forEach(f => {
-      const clean = cleanPath(f);
-      if (clean) folders.add(clean);
-    });
+    (data.folders || []).forEach(f => { const c = cleanPath(f); if (c) folders.add(c); });
     localStorage.setItem(FKEY, JSON.stringify([...folders]));
+    const projects = new Set(getProjects());
+    (data.projects || []).forEach(p => { const c = cleanPath(p); if (c) projects.add(c); });
+    setProjects([...projects]);
+    refreshProjects();
     refreshList();
-    msg('تم الاستيراد: ' + names.length + ' ملف. الملفات التي لها نفس الاسم استُبدلت.');
+    msg('تم الاستيراد: ' + names.length + ' ملف');
   }
 
-  function openByName(n) {
-    refreshList(n);
-    openFile();
-  }
+  function openByName(n) { refreshList(n); openFile(); }
 
   let timer = null;
   function getCaret(el) {
@@ -333,10 +381,8 @@ const String _pyHtml = r'''
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     while ((node = walker.nextNode())) {
       if (count + node.length >= pos) {
-        r.setStart(node, pos - count);
-        r.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(r);
+        r.setStart(node, pos - count); r.collapse(true);
+        sel.removeAllRanges(); sel.addRange(r);
         return;
       }
       count += node.length;
@@ -344,78 +390,61 @@ const String _pyHtml = r'''
   }
 
   const codeEl = document.getElementById('code');
-
   codeEl.addEventListener('keydown', (e) => {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.isCollapsed) return;
-    const el = codeEl;
-    const pos = getCaret(el);
-    const src = el.innerText.replace(/\u00a0/g, ' ');
-
+    const pos = getCaret(codeEl);
+    const src = codeEl.innerText.replace(/\\u00a0/g, ' ');
     if (e.key === 'Enter') {
       e.preventDefault();
-      const lineStart = src.lastIndexOf('\n', pos - 1) + 1;
+      const lineStart = src.lastIndexOf('\\n', pos - 1) + 1;
       const line = src.slice(lineStart, pos);
-      const indent = line.match(/^\s*/)[0];
+      const indent = line.match(/^\\s*/)[0];
       const extra = line.trimEnd().endsWith(':') ? '    ' : '';
-      document.execCommand('insertText', false, '\n' + indent + extra);
+      document.execCommand('insertText', false, '\\n' + indent + extra);
       return;
     }
-
     if (CLOSERS.includes(e.key) && src[pos] === e.key) {
-      e.preventDefault();
-      sel.modify('move', 'forward', 'character');
-      return;
+      e.preventDefault(); sel.modify('move', 'forward', 'character'); return;
     }
-
     if (e.key in PAIRS) {
       e.preventDefault();
       document.execCommand('insertText', false, e.key + PAIRS[e.key]);
       sel.modify('move', 'backward', 'character');
     }
   });
-
   codeEl.addEventListener('input', () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const el = codeEl;
-      const pos = getCaret(el);
-      const src = el.innerText.replace(/\u00a0/g, ' ');
-      el.innerHTML = highlight(src);
-      setCaret(el, pos);
+      const pos = getCaret(codeEl);
+      const src = codeEl.innerText.replace(/\\u00a0/g, ' ');
+      codeEl.innerHTML = highlight(src);
+      setCaret(codeEl, pos);
     }, 250);
   });
-
   codeEl.addEventListener('paste', (e) => {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData('text');
     document.execCommand('insertText', false, text);
   });
 
+  // ===== Python =====
   let pyodide = null;
   let termActive = false;
   let termBlock = [];
 
-  function log(s) {
-    document.getElementById('out').textContent += s + '\n';
-  }
-
+  function log(s) { document.getElementById('out').textContent += s + '\\n'; }
   function tlog(s) {
     const t = document.getElementById('term-out');
-    t.textContent += s + '\n';
+    t.textContent += s + '\\n';
     t.scrollTop = t.scrollHeight;
   }
-
   function showErr(title, detail) {
     const out = document.getElementById('out');
     out.innerHTML = '';
-    const t = document.createElement('div');
-    t.className = 'err';
-    t.textContent = title;
-    const d = document.createElement('div');
-    d.textContent = detail;
-    out.appendChild(t);
-    out.appendChild(d);
+    const t = document.createElement('div'); t.className = 'err'; t.textContent = title;
+    const d = document.createElement('div'); d.textContent = detail;
+    out.appendChild(t); out.appendChild(d);
   }
 
   async function termExec(src) {
@@ -424,18 +453,15 @@ const String _pyHtml = r'''
       const result = await pyodide.runPythonAsync(src);
       if (result !== undefined && result !== null) tlog(String(result));
     } catch (e) {
-      const lines = String(e).trim().split('\n');
+      const lines = String(e).trim().split('\\n');
       tlog(lines[lines.length - 1]);
-    } finally {
-      termActive = false;
-    }
+    } finally { termActive = false; }
   }
 
   async function termRun() {
     const input = document.getElementById('term-in');
     const line = input.value;
     input.value = '';
-
     if (termBlock.length === 0) {
       if (!line.trim()) return;
       if (line.trimEnd().endsWith(':')) {
@@ -448,24 +474,16 @@ const String _pyHtml = r'''
       await termExec(line);
       return;
     }
-
     if (!line.trim()) {
-      const block = termBlock.join('\n') + '\n';
+      const block = termBlock.join('\\n') + '\\n';
       termBlock = [];
       input.placeholder = 'اكتب سطر Python ثم Enter';
       tlog('[تنفيذ الكتلة]');
       await termExec(block);
       return;
     }
-
     termBlock.push(line);
     tlog('... ' + line);
-  }
-
-  // تحميل Pyodide: محلياً أولاً، ثم من الإنترنت إذا فشل
-  async function loadEngine(base) {
-    if (typeof loadPyodide !== 'function') throw new Error('ملف Pyodide غير موجود');
-    return await loadPyodide({ indexURL: base });
   }
 
   function loadScript(src) {
@@ -479,20 +497,16 @@ const String _pyHtml = r'''
   }
 
   async function init() {
-    let base = LOCAL_BASE;
+    const LOCAL = 'file:///android_asset/flutter_assets/assets/pyodide/';
+    const CDN = 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/';
     let source = 'من ملفات التطبيق';
     try {
-      await loadScript(LOCAL_BASE + 'pyodide.js');
-      pyodide = await loadEngine(LOCAL_BASE);
+      if (typeof loadPyodide !== 'function') throw new Error('محلي غير متاح');
+      pyodide = await loadPyodide({ indexURL: LOCAL });
     } catch (localErr) {
-      try {
-        base = CDN_BASE;
-        source = 'من الإنترنت (احتياط)';
-        await loadScript(CDN_BASE + 'pyodide.js');
-        pyodide = await loadEngine(CDN_BASE);
-      } catch (cdnErr) {
-        throw new Error('فشل تحميل Python محلياً وعبر الإنترنت: ' + cdnErr.message);
-      }
+      source = 'من الإنترنت (احتياط)';
+      await loadScript(CDN + 'pyodide.js');
+      pyodide = await loadPyodide({ indexURL: CDN });
     }
     pyodide.setStdout({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     pyodide.setStderr({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
@@ -501,7 +515,7 @@ const String _pyHtml = r'''
     btn.textContent = 'تشغيل';
     btn.onclick = runCode;
     document.getElementById('out').textContent = 'Python جاهز (' + source + ')';
-    document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
+    document.getElementById('term-out').textContent = 'طرفية Python جاهزة\\n';
   }
 
   async function runCode() {
@@ -510,14 +524,18 @@ const String _pyHtml = r'''
       await pyodide.runPythonAsync(getCode());
     } catch (e) {
       const text = String(e);
-      const lines = text.trim().split('\n');
+      const lines = text.trim().split('\\n');
       const last = lines[lines.length - 1];
-      const lineMatch = text.match(/line (\d+)/);
+      const lineMatch = text.match(/line (\\d+)/);
       const title = 'خطأ في Python' + (lineMatch ? ' - السطر ' + lineMatch[1] : '');
       showErr(title, last);
     }
   }
 
+  // ===== ربط الأزرار =====
+  document.getElementById('pnew').onclick = createProject;
+  document.getElementById('pcur').onclick = setCurrent;
+  document.getElementById('pdel').onclick = deleteProject;
   document.getElementById('save').onclick = saveFile;
   document.getElementById('open').onclick = openFile;
   document.getElementById('new').onclick = newFile;
@@ -529,7 +547,9 @@ const String _pyHtml = r'''
   document.getElementById('term-in').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); termRun(); }
   });
-  setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
+
+  setCode('name = "Abdullah"\\nfor i in range(3):\\n    print("مرحباً", name, i + 1)\\n');
+  refreshProjects();
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
 </script>
