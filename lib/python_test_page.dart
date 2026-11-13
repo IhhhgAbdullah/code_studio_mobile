@@ -52,8 +52,6 @@ const String _pyHtml = r'''
   .str { color: #C3E88D; }
   .num { color: #F78C6C; }
   .com { color: #6A8A9A; font-style: italic; }
-  .proj { background: #0A1F3D; border: 1px solid #2A4A7A; border-radius: 10px; padding: 8px; margin-top: 6px; }
-  .proj.cur { border-color: #D4AF37; }
 </style>
 </head>
 <body>
@@ -145,7 +143,6 @@ const String _pyHtml = r'''
     return out + '\\n';
   }
 
-  // عمود أرقام الأسطر: يُحسب من عدد الأسطر فقط
   function updateGutter() {
     const src = getCode();
     const n = src.split('\\n').length - (src.endsWith('\\n') ? 1 : 0);
@@ -550,10 +547,12 @@ const String _pyHtml = r'''
     } catch (e) {
       const text = String(e);
       const lines = text.trim().split('\\n');
-      const last = lines[lines.length - 1];
       const lineMatch = text.match(/line (\\d+)/);
-      const title = 'خطأ في Python' + (lineMatch ? ' - السطر ' + lineMatch[1] : '');
-      showErr(title, last);
+      const lineNo = lineMatch ? lineMatch[1] : null;
+      const title = lineNo ? 'خطأ في Python - السطر ' + lineNo : 'خطأ في Python';
+      const last = lines[lines.length - 1];
+      showErr(title, last + '\\n\\nالنص الأصلي:\\n' + text);
+      if (lineNo) tlog('خطأ في السطر ' + lineNo + ': ' + last);
     }
   }
 
