@@ -1,6 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+const String _sfxJs = r'''
+let audioCtx = null;
+let muted = false;
+function beep(freq, dur, type, vol) {
+  if (muted) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || 'sine';
+    o.frequency.value = freq;
+    g.gain.value = vol || 0.08;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + dur);
+  } catch (e) {}
+}
+const sfx = {
+  coin: () => beep(880, 0.08, 'sine', 0.08),
+  hit: () => beep(140, 0.25, 'sawtooth', 0.07),
+  flip: () => beep(420, 0.05, 'triangle', 0.05),
+  match: () => { beep(660, 0.1, 'sine', 0.08); setTimeout(() => beep(880, 0.12, 'sine', 0.08), 90); },
+  miss: () => beep(180, 0.15, 'sawtooth', 0.05),
+  win: () => { beep(523, 0.12, 'triangle', 0.1); setTimeout(() => beep(659, 0.12, 'triangle', 0.1), 120); setTimeout(() => beep(784, 0.25, 'triangle', 0.1), 240); },
+  lose: () => { beep(330, 0.2, 'sawtooth', 0.07); setTimeout(() => beep(220, 0.35, 'sawtooth', 0.07), 200); }
+};
+''';
+
 const String _memoryJs = r'''
 let cards, first, second, lock, moves, matched, timeLeft, state, best;
 best = Number(localStorage.getItem('cs_memory_best') || 999);
@@ -21,7 +49,7 @@ function setup() {
 function update(dt) {
   if (state !== 'play') return;
   timeLeft -= dt;
-  if (timeLeft <= 0) state = 'over';
+  if (timeLeft <= 0) { state = 'over'; sfx.lose(); }
 }
 
 function pick(x, y) {
@@ -29,17 +57,20 @@ function pick(x, y) {
   const c = cards.find(k => !k.done && !k.open && x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
   if (!c) return;
   c.open = true;
+  sfx.flip();
   if (!first) { first = c; return; }
   second = c; moves++; lock = true;
   setTimeout(() => {
     if (first.sym === second.sym) {
       first.done = true; second.done = true; matched += 2;
+      sfx.match();
       if (matched === cards.length) {
         state = 'win';
+        sfx.win();
         const score = Math.max(0, Math.ceil(timeLeft)) + Math.max(0, 40 - moves);
         if (score > best) { best = score; localStorage.setItem('cs_memory_best', String(best)); }
       }
-    } else { first.open = false; second.open = false; }
+    } else { first.open = false; second.open = false; sfx.miss(); }
     first = null; second = null; lock = false;
   }, 700);
 }
@@ -81,7 +112,7 @@ function setup() {
 function update(dt) {
   if (state !== 'play') return;
   timeLeft -= dt;
-  if (timeLeft <= 0) { state = 'over'; saveBest(); return; }
+  if (timeLeft <= 0) { state = 'over'; sfx.lose(); saveBest(); return; }
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
@@ -97,7 +128,8 @@ function update(dt) {
     if (o.y > 480 + o.r) { score += 1; return false; }
     if (Math.hypot(o.x - player.x, o.y - player.y) < o.r + player.r) {
       lives--;
-      if (lives <= 0) { state = 'over'; saveBest(); }
+      sfx.hit();
+      if (lives <= 0) { state = 'over'; sfx.lose(); saveBest(); }
       return false;
     }
     return true;
@@ -142,7 +174,7 @@ function setup() {
 function update(dt) {
   if (state !== 'play') return;
   timeLeft -= dt;
-  if (timeLeft <= 0) { state = 'over'; return; }
+  if (timeLeft <= 0) { state = 'over'; sfx.lose(); return; }
   const s = player.speed * dt;
   if (keys.ArrowLeft) player.x -= s;
   if (keys.ArrowRight) player.x += s;
@@ -152,7 +184,7 @@ function update(dt) {
   player.x = Math.max(player.r, Math.min(360 - player.r, player.x));
   player.y = Math.max(player.r, Math.min(480 - player.r, player.y));
   coins = coins.filter(c => {
-    if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + player.r) { score += 10; return false; }
+    if (Math.hypot(c.x - player.x, c.y - player.y) < c.r + player.r) { score += 10; sfx.coin(); return false; }
     return true;
   });
   if (coins.length === 0) {
@@ -207,9 +239,13 @@ String _pageHtml(String gameJs, String title) {
   <div class="row">
     <button id="run">تشغيل</button>
     <button id="stop" class="alt">إيقاف</button>
+    <button id="mute" class="alt">الصوت: مفعّل</button>
   </div>
   <div id="err" class="err"></div>
 </div>
+<script>
+$_sfxJs
+</script>
 <script>
 $gameJs
 </script>
@@ -218,10 +254,16 @@ $gameJs
   const cv = document.getElementById('cv');
   const ctx = cv.getContext('2d');
   const errEl = document.getElementById('err');
+  const muteBtn = document.getElementById('mute');
   const keys = {};
   const touch = { down: false, x: 0, y: 0 };
   let raf = null;
   let game = null;
+
+  muteBtn.onclick = () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? 'الصوت: متوقف' : 'الصوت: مفعّل';
+  };
 
   function pos(e) {
     const r = cv.getBoundingClientRect();
