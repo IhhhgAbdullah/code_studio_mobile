@@ -103,6 +103,7 @@ const String _pyHtml = r'''
     <button id="exp" class="alt">تصدير الكل</button>
     <button id="imp" class="alt">استيراد</button>
   </div>
+  <button id="copyProj" class="alt" style="margin-top:8px">نسخ المشروع إلى الحافظة</button>
   <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا" style="width:100%;margin-top:8px;background:#0A1F3D;color:#fff;border:1px solid #D4AF37;border-radius:10px;padding:8px;direction:ltr"></textarea>
   <div id="msg" class="msg"></div>
 </div>
@@ -370,6 +371,29 @@ const String _pyHtml = r'''
     msg('تم التصدير: ' + Object.keys(data.files).length + ' ملف. انسخ النص من الحقل أدناه.');
   }
 
+  // نسخ ملفات المشروع الحالي (أو ملفات الجذر) كنص JSON إلى الحافظة
+  async function copyProject() {
+    const cur = curProject();
+    const files = getFiles();
+    const scoped = {};
+    Object.keys(files).forEach(k => {
+      if (cur ? k.startsWith(cur + '/') : !k.includes('/')) scoped[k] = files[k];
+    });
+    const data = { app: 'code_studio_mobile', version: 2,
+      projects: cur ? [cur] : [], folders: [], files: scoped };
+    const text = JSON.stringify(data, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      msg('تم نسخ المشروع (' + Object.keys(scoped).length + ' ملف) إلى الحافظة');
+    } catch (e) {
+      const ta = document.getElementById('xdata');
+      ta.value = text;
+      ta.select();
+      const ok = document.execCommand('copy');
+      msg(ok ? 'تم نسخ المشروع إلى الحافظة' : 'تعذّر النسخ، انسخ النص من الحقل أدناه يدوياً');
+    }
+  }
+
   function importAll() {
     const raw = document.getElementById('xdata').value.trim();
     let data;
@@ -610,6 +634,7 @@ const String _pyHtml = r'''
   document.getElementById('ren').onclick = renameFile;
   document.getElementById('mkdir').onclick = newFolder;
   document.getElementById('exp').onclick = exportAll;
+  document.getElementById('copyProj').onclick = copyProject;
   document.getElementById('imp').onclick = importAll;
   document.getElementById('term-in').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); termRun(); }
