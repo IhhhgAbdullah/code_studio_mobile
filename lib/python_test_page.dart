@@ -45,6 +45,11 @@ const String _pyHtml = r'''
   }
   #term-in { direction: ltr; font-family: monospace; }
   #term-out { min-height: 120px; max-height: 260px; overflow-y: auto; }
+  #stdin {
+    width: 100%; min-height: 70px; margin-bottom: 8px; border-radius: 10px;
+    border: 1px solid #D4AF37; background: #0A1F3D; color: #fff; font-size: 14px;
+    direction: ltr; font-family: monospace; padding: 8px;
+  }
   .err { color: #ff6b6b; font-weight: bold; }
   .msg { color: #D4AF37; font-size: 13px; margin-top: 6px; min-height: 16px; }
   .kw { color: #C792EA; font-weight: bold; }
@@ -99,6 +104,11 @@ const String _pyHtml = r'''
   </div>
   <textarea id="xdata" rows="4" placeholder="نص التصدير يظهر هنا، والصق نص الاستيراد هنا" style="width:100%;margin-top:8px;background:#0A1F3D;color:#fff;border:1px solid #D4AF37;border-radius:10px;padding:8px;direction:ltr"></textarea>
   <div id="msg" class="msg"></div>
+</div>
+<div class="card">
+  <div class="card-title">مدخلات input() (سطر لكل إدخال، بالترتيب)</div>
+  <textarea id="stdin" placeholder="مثال:\nAbdullah\n25"></textarea>
+  <div class="msg">كل استدعاء لـ input() يأخذ السطر التالي من هذا الحقل.</div>
 </div>
 <div class="card">
   <div class="card-title">التشغيل</div>
@@ -454,6 +464,7 @@ const String _pyHtml = r'''
   let pyodide = null;
   let termActive = false;
   let termBlock = [];
+  let stdinQueue = [];
 
   function log(s) { document.getElementById('out').textContent += s + '\n'; }
   function tlog(s) {
@@ -467,6 +478,22 @@ const String _pyHtml = r'''
     const t = document.createElement('div'); t.className = 'err'; t.textContent = title;
     const d = document.createElement('div'); d.textContent = detail;
     out.appendChild(t); out.appendChild(d);
+  }
+
+  // input(): يأخذ السطر التالي من حقل المدخلات
+  function readStdin() {
+    if (stdinQueue.length > 0) {
+      const v = stdinQueue.shift();
+      log('> ' + v);
+      return v;
+    }
+    log('[تنبيه: لا يوجد إدخال متبقٍ لـ input()، أُعيد نص فارغ]');
+    return '';
+  }
+
+  function loadStdinFromBox() {
+    const raw = document.getElementById('stdin').value;
+    stdinQueue = raw === '' ? [] : raw.split('\n');
   }
 
   async function termExec(src) {
@@ -532,6 +559,7 @@ const String _pyHtml = r'''
     }
     pyodide.setStdout({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     pyodide.setStderr({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
+    pyodide.setStdin({ stdin: readStdin });
     const btn = document.getElementById('run');
     btn.disabled = false;
     btn.textContent = 'تشغيل';
@@ -540,9 +568,9 @@ const String _pyHtml = r'''
     document.getElementById('term-out').textContent = 'طرفية Python جاهزة\n';
   }
 
-  // رقم السطر يُؤخذ من آخر إشارة إلى كود المستخدم (<exec>)، لا من سطور Pyodide الداخلية
   async function runCode() {
     document.getElementById('out').textContent = '';
+    loadStdinFromBox();
     try {
       await pyodide.runPythonAsync(getCode());
     } catch (e) {
@@ -577,7 +605,7 @@ const String _pyHtml = r'''
     if (e.key === 'Enter') { e.preventDefault(); termRun(); }
   });
 
-  setCode('name = "Abdullah"\nfor i in range(3):\n    print("مرحباً", name, i + 1)\n');
+  setCode('name = input("اسمك: ")\nprint("مرحباً", name)\n');
   refreshProjects();
   refreshList();
   init().catch(e => showErr('فشل التحميل', (e && e.message) ? e.message : String(e)));
