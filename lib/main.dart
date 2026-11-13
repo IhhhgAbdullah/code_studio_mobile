@@ -76,7 +76,7 @@ class _HomeShellState extends State<HomeShell> {
       ['الفيزياء 3D', 'physics'],
       ['مشهد 3D', 'scene3d'],
     ],
-    2: [['شاشات', 'screens'], ['واجهة لعبة', 'gameui'], ['قوالب', 'wizard']],
+    2: [['تطبيق', 'screens'], ['لعبة', 'gameui'], ['قوالب', 'wizard']],
     3: [
       ['Python', 'python'],
       ['Dart', 'dart'],
