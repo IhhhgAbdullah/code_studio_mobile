@@ -114,7 +114,7 @@ const String _pyHtml = r'''
   <div class="msg">كل استدعاء لـ input() يأخذ السطر التالي من هذا الحقل.</div>
 </div>
 <div class="card">
-  <div class="card-title">التشغيل</div>
+  <div class="card-title">التشغيل (مهلة التنفيذ 5 ثوانٍ، والحد 20000 حرف)</div>
   <button id="run" disabled>جاري تحميل Python...</button>
 </div>
 <div class="card">
@@ -135,6 +135,8 @@ const String _pyHtml = r'''
   const BUILTINS = ['print','len','range','int','str','float','list','dict','set','tuple','sum','min','max','abs','sorted','enumerate','zip','map','filter','open','type','isinstance','input'];
   const PAIRS = { '(': ')', '[': ']', '{': '}' };
   const CLOSERS = [')', ']', '}'];
+  const TIME_LIMIT_S = 5;
+  const MAX_CODE_CHARS = 20000;
 
   function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
@@ -541,10 +543,35 @@ const String _pyHtml = r'''
     stdinQueue = raw === '' ? [] : raw.split('\n');
   }
 
+  // تثبيت أداة المراقبة مرة واحدة: تفحص الوقت مع كل سطر، وتوقف التنفيذ عند تجاوز المهلة
+  function installTracer() {
+    pyodide.runPython(`
+import sys, time
+_deadline = [0.0]
+def _cs_tracer(frame, event, arg):
+    if time.time() > _deadline[0]:
+        raise TimeoutError("توقف التنفيذ: تجاوز الكود المهلة المسموحة (5 ثوانٍ)")
+    return _cs_tracer
+`);
+  }
+
+  // تشغيل كود المستخدم مع المهلة الزمنية وحد الحجم
+  async function runGuarded(src) {
+    if (src.length > MAX_CODE_CHARS) {
+      throw new Error('الكود طويل جداً (الحد ' + MAX_CODE_CHARS + ' حرف)');
+    }
+    pyodide.runPython('import sys\n_deadline[0] = ' + (Date.now() / 1000 + TIME_LIMIT_S) + '\nsys.settrace(_cs_tracer)');
+    try {
+      await pyodide.runPythonAsync(src);
+    } finally {
+      pyodide.runPython('import sys\nsys.settrace(None)');
+    }
+  }
+
   async function termExec(src) {
     termActive = true;
     try {
-      const result = await pyodide.runPythonAsync(src);
+      const result = await runGuarded(src);
       if (result !== undefined && result !== null) tlog(String(result));
     } catch (e) {
       const lines = String(e).trim().split('\n');
@@ -605,6 +632,7 @@ const String _pyHtml = r'''
     pyodide.setStdout({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     pyodide.setStderr({ batched: (s) => { if (termActive) tlog(s); else log(s); } });
     pyodide.setStdin({ stdin: readStdin });
+    installTracer();
     const btn = document.getElementById('run');
     btn.disabled = false;
     btn.textContent = 'تشغيل';
@@ -620,7 +648,7 @@ const String _pyHtml = r'''
     document.getElementById('out').textContent = '';
     loadStdinFromBox();
     try {
-      await pyodide.runPythonAsync(getCode());
+      await runGuarded(getCode());
     } catch (e) {
       const text = String(e);
       const lines = text.trim().split('\n');
