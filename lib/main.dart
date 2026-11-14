@@ -4,6 +4,7 @@ import 'dart_page.dart';
 import 'design_page.dart';
 import 'game_page.dart';
 import 'home_page.dart';
+import 'horror_page.dart';
 import 'match3_page.dart';
 import 'puzzle_page.dart';
 import 'python_test_page.dart';
@@ -75,6 +76,7 @@ class _HomeShellState extends State<HomeShell> {
       ['ألغاز', 'puzzle'],
       ['الفيزياء 3D', 'physics'],
       ['مشهد 3D', 'scene3d'],
+      ['الهروب (تجريبي)', 'horror'],
     ],
     2: [['تطبيق', 'screens'], ['لعبة', 'gameui'], ['قوالب', 'wizard']],
     3: [
@@ -100,6 +102,7 @@ class _HomeShellState extends State<HomeShell> {
       case 'puzzle': return const PuzzlePage();
       case 'physics':
       case 'scene3d': return const ThreePage();
+      case 'horror': return const HorrorPage();
       case 'screens':
       case 'gameui':
       case 'wizard': return const DesignPage();
